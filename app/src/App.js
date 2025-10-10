@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 function App() {
-  const [account, setAccount] = useState("");
-  const [cid, setCid] = useState("");
+  const [account, setAccount] = useState(null);
+  const [files, setFiles] = useState([]);
 
   async function connectWallet() {
     if (window.ethereum) {
@@ -10,7 +10,7 @@ function App() {
         const accounts = await window.ethereum.request({
           method: "eth_requestAccounts",
         });
-        setAccount(accounts[0]); // first account
+        setAccount(accounts[0]);
       } catch (err) {
         console.error("User rejected request:", err);
       }
@@ -41,26 +41,57 @@ function App() {
       body: formData,
     });
     const data = await response.json();
-    setCid(data.cid);
-    alert(`File uploaded! CID: ${data.cid}`);
+    alert(`File uploaded! CID: ${data.cid}, and txn_hash: ${data.txn_hash}`);
+    
+    // Refresh the files list after upload
+    retrieveFiles();
   }
+
+  const retrieveFiles = useCallback(async () => {
+    if (!account) return;
+    try {
+      const response = await fetch(`http://localhost:8000/`);
+      const data = await response.json();
+      console.log("Retrieved files data:", data);
+      setFiles(data.user_files || []);
+    } catch (err) {
+      console.error("Error retrieving files:", err);
+      setFiles([]);
+    }
+  }, [account]);
+
+  useEffect(() => {
+    if (account) {
+      retrieveFiles();
+    }
+  }, [account, retrieveFiles]);
 
   return (
     <div style={{ textAlign: "center", marginTop: "50px" }}>
       <h1>Connect your Metamask wallet</h1>
-
       <button onClick={connectWallet}>
-        <p> {account ? `Connected: ${account}` : "Connect MetaMask" } </p>
+        <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
       </button>
+
+      <div style={{ marginTop: "20px" }}>
+        <h2>Files:</h2>
+        {!files || files.length === 0 ? (
+          <p>No files found.</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0 }}>
+            {files.map((file, index) => (
+              <li key={index}>{file}</li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <form onSubmit={uploadFile} style={{ marginTop: "20px" }}>
         <input type="file" />
         <button type="submit">Upload</button>
       </form>
-      
     </div>
   );
 }
 
 export default App;
-
