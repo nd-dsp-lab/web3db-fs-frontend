@@ -3,6 +3,8 @@ import React, { useState, useEffect, useCallback } from "react";
 function App() {
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
+  const [fileTree, setFileTree] = useState(null);
+  const [currentPath, setCurrentPath] = useState("/");
 
   async function connectWallet() {
     if (window.ethereum) {
@@ -19,6 +21,72 @@ function App() {
     }
   }
 
+  // Folder system helper functions
+  function buildFileTree(files) {
+    const root = { name: "/", type: "folder", children: [] };
+
+    for (const file of files) {
+      const path = file.folder_path || "/";
+      if (path === "/" || path === "") {
+        root.children.push({
+          ...file,
+          type: "file",
+          name: file.filename
+        });
+      } else {
+        root.children.push({
+          ...file,
+          type: "file",
+          name: file.filename
+        });
+      }
+    }
+
+    return root;
+  }
+
+  function getFolderContents(tree, path) {
+    if (!tree) return [];
+
+    if (path === "/" || path === "") {
+      return tree.children.filter(item => item.type === "file");
+    }
+
+    const parts = path.split("/").filter(Boolean);
+    let node = tree;
+    for (const part of parts) {
+      node = node?.children.find(c => c.name === part && c.type === "folder");
+      if (!node) return [];
+    }
+    return node.children || [];
+  }
+
+  async function ensureSepolia() {
+    const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
+
+    try {
+      const currentChainId = await window.ethereum.request({ method: "eth_chainId" });
+      if (currentChainId !== SEPOLIA_CHAIN_ID) {
+        try {
+          // try to switch to sepolia
+          await window.ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: SEPOLIA_CHAIN_ID }],
+          });
+          console.log("Swithched to Sepolia");
+        } catch (switchError) {
+          // sepolia isn't added to metamask
+          console.error("Cannot find Sepolia in wallet", switchError);
+          // ADD CODE TO TRY AND ADD SEPOLIA TO METAMASK HERE
+        }
+      } else {
+        console.log("Already on Sepolia");
+      }
+    } catch (err) {
+      console.error("Couldn't ensure Sepolia network:", err);
+    }
+  }
+
   async function uploadFile(event) {
     event.preventDefault();
     const fileInput = event.target.querySelector('input[type="file"]');
@@ -32,28 +100,93 @@ function App() {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("user_address", account);
+    try {
+      // Upload to IPFS and get transaction data
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("user_address", account);
+      formData.append("folder_path", currentPath); // You can add folder input later
 
-    const response = await fetch("http://localhost:8000/upload", {
-      method: "POST",
-      body: formData,
-    });
-    const data = await response.json();
-    alert(`File uploaded! CID: ${data.cid}, and txn_hash: ${data.txn_hash}`);
-    
-    // Refresh the files list after upload
-    retrieveFiles();
+      const response = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      
+      console.log("Backend response:", data);
+      
+      if (!data.transaction) {
+        alert("Failed to prepare transaction");
+        return;
+      }
+
+      alert(`File uploaded to IPFS! CID: ${data.cid}. Now sign the transaction to store on blockchain.`);
+
+      // Sign transaction with MetaMask
+      console.log("Transaction data:", data.transaction);
+
+      // Ensure on Sepolia network
+      await ensureSepolia();
+
+      // Ensure all transaction fields are properly formatted
+      const transaction = {
+        ...data.transaction,
+        // Ensure hex values are properly formatted
+        gas: data.transaction.gas ? `0x${data.transaction.gas.toString(16)}` : data.transaction.gas,
+        gasPrice: data.transaction.gasPrice ? `0x${data.transaction.gasPrice.toString(16)}` : data.transaction.gasPrice,
+        nonce: data.transaction.nonce ? `0x${data.transaction.nonce.toString(16)}` : data.transaction.nonce,
+        value: data.transaction.value || '0x0'
+      };
+      
+      console.log("Formatted transaction:", transaction);
+      
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [transaction],
+      });
+
+      alert(`Transaction sent! Hash: ${txHash}. Waiting for confirmation...`);
+
+      // Verify transaction was mined
+      const verifyResponse = await fetch("http://localhost:8000/verify-upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      
+      const verifyData = await verifyResponse.json();
+      
+      if (verifyData.success) {
+        alert(`File successfully stored on blockchain! Transaction: ${txHash}`);
+        // Refresh the files list after successful upload
+        retrieveFiles();
+      } else {
+        const errorMessage = verifyData.error || "Transaction verification failed";
+        alert(`Transaction failed: ${errorMessage}`);
+      }
+
+    } catch (error) {
+      console.error("Upload failed:", error);
+      if (error.code === 4001) {
+        alert("Transaction rejected by user");
+      } else {
+        // Handle different error object structures
+        const errorMessage = error.message || error.reason || error.toString() || "Unknown error";
+        alert(`Upload failed: ${errorMessage}`);
+      }
+    }
   }
 
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
     try {
-      const response = await fetch(`http://localhost:8000/`);
+      const response = await fetch(`http://localhost:8000/?user_address=${account}`);
       const data = await response.json();
       console.log("Retrieved files data:", data);
       setFiles(data.user_files || []);
+      setFileTree(buildFileTree(data.user_files || []));
     } catch (err) {
       console.error("Error retrieving files:", err);
       setFiles([]);
@@ -67,28 +200,119 @@ function App() {
   }, [account, retrieveFiles]);
 
   return (
-    <div style={{ textAlign: "center", marginTop: "50px" }}>
-      <h1>Connect your Metamask wallet</h1>
-      <button onClick={connectWallet}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        minHeight: "100vh",
+        padding: "40px 20px",
+        backgroundColor: "#fafafa",
+      }}
+    >
+      <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
+
+      <button onClick={connectWallet} style={{ marginBottom: "20px" }}>
         <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
       </button>
 
-      <div style={{ marginTop: "20px" }}>
-        <h2>Files:</h2>
-        {!files || files.length === 0 ? (
-          <p>No files found.</p>
+      <div style={{ width: "100%", maxWidth: "1000px" }}>
+
+        {fileTree ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "30px",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              textAlign: "left",
+              marginTop: "10px",
+            }}
+          >
+            {/* LEFT PANEL — Folders */}
+            <div
+              style={{
+                flex: "0 0 250px",
+                borderRight: "1px solid #ddd",
+                paddingRight: "20px",
+                minHeight: "400px",
+              }}
+            >
+              <h3>Folders</h3>
+              <div
+                onClick={() => setCurrentPath("/")}
+                style={{
+                  padding: "6px 8px",
+                  border: "1px solid #ddd",
+                  borderRadius: "4px",
+                  background: currentPath === "/" ? "#f0f0f0" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                /
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN — Files */}
+            <div style={{ flex: "1", minHeight: "400px" }}>
+              <h3>Files in {currentPath}</h3>
+              {getFolderContents(fileTree, currentPath)
+                .filter((item) => item.type === "file")
+                .map((file, index) => (
+                  <div
+                    key={index}
+                    style={{
+                      border: "1px solid #e0e0e0",
+                      borderRadius: "6px",
+                      padding: "10px",
+                      marginBottom: "10px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>
+                      <strong>{file.name}</strong>
+                      <div style={{ fontSize: "0.85em", color: "#666" }}>
+                        CID: {file.cid}
+                      </div>
+                    </div>
+
+                    <a
+                      href={`http://localhost:8000/download/${file.cid}/${encodeURIComponent(
+                        file.filename
+                      )}`}
+                      download={file.filename}
+                      style={{
+                        color: "#0066cc",
+                        textDecoration: "none",
+                        border: "1px solid #0066cc",
+                        borderRadius: "4px",
+                        padding: "4px 8px",
+                        fontSize: "0.85em",
+                      }}
+                    >
+                      Download
+                    </a>
+                  </div>
+                ))}
+            </div>
+          </div>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {files.map((file, index) => (
-              <li key={index}>{file}</li>
-            ))}
-          </ul>
+          <p>No files found.</p>
         )}
       </div>
 
-      <form onSubmit={uploadFile} style={{ marginTop: "20px" }}>
+      {/* Upload form centered below everything */}
+      <form
+        onSubmit={uploadFile}
+        style={{ marginTop: "30px", textAlign: "center" }}
+      >
         <input type="file" />
-        <button type="submit">Upload</button>
+        <button type="submit" style={{ marginLeft: "10px" }}>
+          Upload
+        </button>
       </form>
     </div>
   );
