@@ -87,6 +87,80 @@ function App() {
     }
   }
 
+  // need to be able to convert numeric txn fields to hex for MetaMask
+  function toHexifNumber(input) {
+    if (input === undefined || input === null) return input;
+    if (typeof input === "string" && input.startsWith("0x")) return input;
+    const n = typeof input === "number" ? input : parseInt(input.toString(), 10);
+    if (Number.isNaN(n)) return input;
+    return "0x" + n.toString(16);
+  }
+
+  // Functionality for preparing and sending shared transactions
+  async function handleShare(cid, toAddress) {
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+
+    try {
+      // request backend to prepare transaction
+      const res = await fetch("http://localhost:8000/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid, to_address: toAddress, usr_address: account }),
+      });
+      const payload = await res.json();
+      if (!payload.transaction) {
+        console.error("Share prepare failed", payload);
+        alert("Failed to prepare share transaction");
+        return;
+      }
+      const txn = payload.transaction;
+
+      // Ensure we are on Sepolia network
+      await ensureSepolia();
+
+      // Ensure all transaction fields are properly formatted
+      const fields = {...txn};
+      fields.gas = toHexifNumber(fields.gas);
+      fields.gasPrice = toHexifNumber(fields.gasPrice);
+      fields.nonce = toHexifNumber(fields.nonce);
+      fields.value = toHexifNumber(fields.value) || '0x0';
+      fields.chainId = toHexifNumber(fields.chainId);
+
+      // Get user approval
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [fields],
+      });
+
+      alert(`Share transaction sent: ${txHash}. Waiting for confirmation...`);
+
+      // Verification
+      const verify = await fetch("http://localhost:8000/verify-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      const verifyData = await verify.json();
+      if (verifyData.success) {
+        alert("Share successful");
+        retrieveFiles();
+      } else {
+        console.error("Share tx verifiaction failed", verifyData);
+        alert("Share transaction failed");
+      }
+    } catch (err) {
+      console.error("Share flow error", err);
+      if(err?.code === 4001) {
+        alert("Transaction rejected by user");
+      } else {
+        alert("Share failed: " + (err?.message || err?.reason || err.toString()) );
+      }
+    }
+  }
+
   async function uploadFile(event) {
     event.preventDefault();
     const fileInput = event.target.querySelector('input[type="file"]');
@@ -295,6 +369,25 @@ function App() {
                     >
                       Download
                     </a>
+
+                    <button
+                      onClick={async () => {
+                            const to = window.prompt("Enter recipient Ethereum address (0x...)");
+                            if (!to) return;
+                            await handleShare(file.cid, to);
+                          }}
+                          style={{
+                            background: "#00a86b",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "4px",
+                            padding: "6px 10px",
+                            cursor: "pointer",
+                            fontSize: "0.85em",
+                          }}
+                    >
+                      Share
+                    </button>
                   </div>
                 ))}
             </div>
