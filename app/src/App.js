@@ -105,18 +105,19 @@ function App() {
 
     try {
       // request backend to prepare transaction
-      const res = await fetch("http://localhost:8000/share", {
+      const response = await fetch("http://localhost:8000/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cid, to_address: toAddress, usr_address: account }),
+        body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
       });
-      const payload = await res.json();
-      if (!payload.transaction) {
-        console.error("Share prepare failed", payload);
+
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Share prepare failed", data);
         alert("Failed to prepare share transaction");
         return;
       }
-      const txn = payload.transaction;
+      const txn = data.transaction;
 
       // Ensure we are on Sepolia network
       await ensureSepolia();
@@ -157,6 +158,72 @@ function App() {
         alert("Transaction rejected by user");
       } else {
         alert("Share failed: " + (err?.message || err?.reason || err.toString()) );
+      }
+    }
+  }
+
+  // handler for unsharing files
+  async function handleUnshare(cid, toAddress) {
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+  
+    try {
+      const response = await fetch("http://localhost:8000/unshare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
+      });
+
+      const data = await response.json();
+
+      if (!data.transaction) {
+        console.error("Share prepare failed", data);
+        alert("Failed to prepare share transaction");
+        return;
+      }
+      const txn = data.transaction;
+
+      // Ensure we are on Sepolia network
+      await ensureSepolia();
+
+      // Ensure all transaction fields are properly formatted
+      const fields = {...txn};
+      fields.gas = toHexifNumber(fields.gas);
+      fields.gasPrice = toHexifNumber(fields.gasPrice);
+      fields.nonce = toHexifNumber(fields.nonce);
+      fields.value = toHexifNumber(fields.value) || '0x0';
+      fields.chainId = toHexifNumber(fields.chainId);
+
+      // Get user approval
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [fields],
+      });
+
+      alert(`Unshare transaction sent: ${txHash}. Waiting for confirmation...`);
+
+      // Verification
+      const verify = await fetch("http://localhost:8000/verify-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      const verifyData = await verify.json();
+      if (verifyData.success) {
+        alert("Unshare successful");
+        retrieveFiles();
+      } else {
+        console.error("Unshare tx verification failed", verifyData);
+        alert("Unshare transaction failed");
+      }
+    } catch (err) {
+      console.error("Unshare flow error", err);
+      if(err?.code === 4001) {
+        alert("Transaction rejected by user");
+      } else {
+        alert("Unshare failed: " + (err?.message || err?.reason || err.toString()) );
       }
     }
   }
@@ -253,19 +320,102 @@ function App() {
     }
   }
 
+  async function handleDelete(cid) {
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+
+    try {
+      const response = await fetch("http://localhost:8000/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid, user_address: account }),
+      });
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Delete prep failed", data);
+        alert("Failed to prepare delete transaction");
+        return;
+      }
+      const txn = data.transaction;
+
+      await ensureSepolia();
+
+      const fields = {...txn};
+      fields.gas = toHexifNumber(fields.gas);
+      fields.gasPrice = toHexifNumber(fields.gasPrice);
+      fields.nonce = toHexifNumber(fields.nonce);
+      fields.value = toHexifNumber(fields.value) || '0x0';
+      fields.chainId = toHexifNumber(fields.chainId);
+
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [fields],
+      });
+
+      alert(`Delete transaction sent: ${txHash}. Waiting for confirmation...`);
+
+      // asking backend to wait for receipt and unpin (verified)
+      const verify = await fetch("http://localhost:8000/verify-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      const verifyData = await verify.json();
+      if (verifyData.success) {
+        alert("Delete successful (if delete call detected by server)");
+        retrieveFiles();
+      } else {
+        console.error("Delete tx verification failed", verifyData);
+        alert("Delete transaction failed");
+      }
+    } catch (err) {
+      console.error("Delete error", err);
+      if(err?.code === 4001) {
+        alert("Transaction rejected by user");
+      } else {
+        alert("Delete failed: " + (err?.message || err?.reason || err.toString()) );
+      }
+    }
+  }
+
+  // retrieveFiles
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
     try {
       const response = await fetch(`http://localhost:8000/?user_address=${account}`);
       const data = await response.json();
-      console.log("Retrieved files data:", data);
-      setFiles(data.user_files || []);
-      setFileTree(buildFileTree(data.user_files || []));
+      console.log("Retriedved files data:", data);
+      const filesList = data.user_files || [];
+
+      // get the shared-user list for each file as well
+      const filesWithShared = await Promise.all(
+        filesList.map(async (file) => {
+          try {
+            const response = await fetch(`http://localhost:8000/shared-users?cid=${encodeURIComponent(file.cid)}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const shared_data = await response.json();
+
+            return { ...file, shared_with: Array.isArray(shared_data.shared_with) ? shared_data.shared_with : [] };
+          } catch (err) {
+            console.error("Error fetching shared-with for CID", file.cid, err);
+            return { ...file, shared_with: [] };
+          }
+        })
+      );
+
+      setFiles(filesWithShared || []);
     } catch (err) {
       console.error("Error retrieving files:", err);
       setFiles([]);
     }
   }, [account]);
+
+  // derive the tree whenever files change
+  useEffect(() => {
+    setFileTree(buildFileTree(files));
+  }, [files]);
 
   useEffect(() => {
     if (account) {
@@ -333,63 +483,139 @@ function App() {
               <h3>Files in {currentPath}</h3>
               {getFolderContents(fileTree, currentPath)
                 .filter((item) => item.type === "file")
-                .map((file, index) => (
-                  <div
-                    key={index}
-                    style={{
-                      border: "1px solid #e0e0e0",
-                      borderRadius: "6px",
-                      padding: "10px",
-                      marginBottom: "10px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <strong>{file.name}</strong>
-                      <div style={{ fontSize: "0.85em", color: "#666" }}>
-                        CID: {file.cid}
-                      </div>
-                    </div>
+                .map((file, index) => {
+                  
+                  let sharedList = file.shared_with
+                  if (!Array.isArray(sharedList)) sharedList = [];
+                  // if entries are objects, try to extract address fields
+                  if (sharedList.length > 0 && typeof sharedList[0] === "object") {
+                    sharedList = sharedList.map(s => s.address || s.to || s.owner || JSON.stringify(s));
+                  }
+                  const hasShared = Array.isArray(sharedList) && sharedList.length > 0;
 
-                    <a
-                      href={`http://localhost:8000/download/${file.cid}/${encodeURIComponent(
-                        file.filename
-                      )}`}
-                      download={file.filename}
+                  return (
+                    <div
+                      key={index}
                       style={{
-                        color: "#0066cc",
-                        textDecoration: "none",
-                        border: "1px solid #0066cc",
-                        borderRadius: "4px",
-                        padding: "4px 8px",
-                        fontSize: "0.85em",
+                        border: "1px solid #e0e0e0",
+                        borderRadius: "6px",
+                        padding: "10px",
+                        marginBottom: "10px",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                       }}
                     >
-                      Download
-                    </a>
+                      <div>
+                        <strong>{file.name}</strong>
+                        <div style={{ fontSize: "0.85em", color: "#666" }}>
+                          CID: {file.cid}
+                        </div>
+                        {hasShared && (
+                          <div style={{ fontSize: "0.8em", color: "#444", marginTop: "6px" }}>
+                            Shared with: {sharedList.join(", ")}
+                          </div>
+                        )}
+                      </div>
 
-                    <button
-                      onClick={async () => {
-                            const to = window.prompt("Enter recipient Ethereum address (0x...)");
-                            if (!to) return;
-                            await handleShare(file.cid, to);
-                          }}
-                          style={{
-                            background: "#00a86b",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: "4px",
-                            padding: "6px 10px",
-                            cursor: "pointer",
-                            fontSize: "0.85em",
-                          }}
-                    >
-                      Share
-                    </button>
-                  </div>
-                ))}
+                      {/* Right side: two-row button layout */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
+                        {/* Top row: Download + Share */}
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          <a
+                            href={`http://localhost:8000/download/${file.cid}/${encodeURIComponent(
+                              file.filename
+                            )}`}
+                            download={file.filename}
+                            style={{
+                              color: "#0066cc",
+                              textDecoration: "none",
+                              border: "1px solid #0066cc",
+                              borderRadius: "4px",
+                              padding: "4px 8px",
+                              fontSize: "0.85em",
+                            }}
+                          >
+                            Download
+                          </a>
+
+                          <button
+                            onClick={async () => {
+                                  const to = window.prompt("Enter recipient Ethereum address (0x...)");
+                                  if (!to) return;
+                                  await handleShare(file.cid, to);
+                                }}
+                                style={{
+                                  background: "#00a86b",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: "4px",
+                                  padding: "6px 10px",
+                                  cursor: "pointer",
+                                  fontSize: "0.85em",
+                                }}
+                          >
+                            Share
+                          </button>
+                        </div>
+
+                        {/* Bottom row: Unshare (conditional) + Delete */}
+                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                          {hasShared && (
+                            <button
+                              onClick={async () => {
+                                let addrToUnshare = null;
+                                if (sharedList.length === 1) {
+                                  const ok = window.confirm(`Unshare file "${file.filename}" with ${sharedList[0]}?`);
+                                  if (!ok) return;
+                                  addrToUnshare = sharedList[0];
+                                } else {
+                                  const listText = sharedList.join(", ");
+                                  const promptMsg = `File "${file.filename}" is shared with: ${listText}\n\nEnter the address to unshare (copy/paste exactly):`;
+                                  const chosen = window.prompt(promptMsg);
+                                  if (!chosen) return;
+                                  addrToUnshare = chosen.trim();
+                                  if (!addrToUnshare) return;
+                                }
+                                await handleUnshare(file.cid, addrToUnshare);
+                              }}
+                              style={{
+                                background: "#ff9800",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "4px",
+                                padding: "6px 10px",
+                                cursor: "pointer",
+                                fontSize: "0.85em",
+                              }}
+                            >
+                              Unshare
+                            </button>
+                          )}
+
+                          <button
+                            onClick={async () => {
+                              const ok = window.confirm(`Delete file "${file.filename}" (CID: ${file.cid})?`);
+                              if (!ok) return;
+                              await handleDelete(file.cid);
+                            }}
+                            style={{
+                              background: "#d9534f",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "4px",
+                              padding: "6px 10px",
+                              cursor: "pointer",
+                              fontSize: "0.85em",
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         ) : (
