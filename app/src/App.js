@@ -7,6 +7,7 @@ function App() {
   const [currentPath, setCurrentPath] = useState("/");
   const [folderPath, setFolderPath] = useState("/");
   const [uploadMode, setUploadMode] = useState("single");
+  const [newFolderName, setNewFolderName] = useState("");
 
   async function connectWallet() {
     if (window.ethereum) {
@@ -22,54 +23,6 @@ function App() {
       alert("MetaMask not detected. Please install it!");
     }
   }
-
-  // function buildFileTree(files) {
-  // const root = { name: "/", type: "folder", children: [] };
-
-  // for (const file of files) {
-  //   const fullPath = file.folder_path || "/";
-  //   const parts = fullPath.split("/").filter(Boolean); // ["web3Example", "Copy of Assignment 3 - Answer Sheet.pdf"]
-  //   let currentNode = root;
-
-  //   parts.forEach((part, index) => {
-  //     const isFile = index === parts.length - 1 && part.includes("."); // last part with a dot is a file
-  //     if (isFile) {
-  //       currentNode.children.push({
-  //         ...file,
-  //         type: "file",
-  //         name: part,
-  //       });
-  //     } else {
-  //       // folder
-  //       let folderNode = currentNode.children.find(
-  //         (c) => c.type === "folder" && c.name === part
-  //       );
-  //       if (!folderNode) {
-  //         folderNode = { name: part, type: "folder", children: [] };
-  //         currentNode.children.push(folderNode);
-  //       }
-  //       currentNode = folderNode;
-  //     }
-  //   });
-  // }
-  //   return root;
-  // }
-
-  // function getFolderContents(tree, path) {
-  //   if (!tree) return [];
-
-  //   if (path === "/" || path === "") {
-  //     return tree.children.filter(item => item.type === "file");
-  //   }
-
-  //   const parts = path.split("/").filter(Boolean);
-  //   let node = tree;
-  //   for (const part of parts) {
-  //     node = node?.children.find(c => c.name === part && c.type === "folder");
-  //     if (!node) return [];
-  //   }
-  //   return node.children || [];
-  // }
 
   // Build a tree from files array
 function buildFileTree(files) {
@@ -106,7 +59,6 @@ function buildFileTree(files) {
       }
     }
   }
-
   return root;
 }
 
@@ -182,16 +134,26 @@ function getFolderContents(tree, path) {
         console.log("Relative Path:", relativePath);
         const pathParts = relativePath.split("/"); 
         console.log("Path Parts:", pathParts);
-        const folderPath = "/" + pathParts.slice(0, -1).join("/"); // e.g. "/web3Example"
-        console.log("Folder Path:", folderPath);
+        const subfolder = pathParts.slice(0, -1).join("/");  // ex: "photos/vacation"
+        // Build full path based on where user clicked
+        const folderPath =
+          currentPath === "/"
+            ? "/" + subfolder                 // upload to root
+            : currentPath + "/" + subfolder;  // upload inside selected folder
+
         formData.append("files", file);
         formData.append("paths", folderPath);
+        // const folderPath = "/" + pathParts.slice(0, -1).join("/"); // e.g. "/web3Example"
+        // console.log("Folder Path:", folderPath);
+        // formData.append("files", file);
+        // formData.append("paths", folderPath);
       }
     } else {
       // For a single file upload
       const file = files[0];
       formData.append("file", file);
-      formData.append("folder_path", "/"); // or currentPath if you track that
+      // formData.append("folder_path", "/"); // or currentPath if you track that
+      formData.append("folder_path", currentPath || "/");
     }
 
     const endpoint =
@@ -327,6 +289,43 @@ async function handleTransaction(data) {
         </div>
       );
     }
+
+function handleCreateFolder() {
+  if (!newFolderName.trim()) return;
+
+  const cleanName = newFolderName.trim();
+
+  setFileTree((prevTree) => {
+    const newTree = structuredClone(prevTree); // safe deep copy
+
+    // Navigate to the correct node based on currentPath
+    const parts = currentPath === "/"
+      ? []
+      : currentPath.split("/").filter(Boolean);
+
+    let node = newTree;
+
+    for (const p of parts) {
+      node = node.children.find(
+        (c) => c.type === "folder" && c.name === p
+      );
+
+      if (!node) return prevTree; // safety: don't crash
+    }
+
+    // Create the new folder (ONLY FRONTEND)
+    node.children.push({
+      name: cleanName,
+      type: "folder",
+      children: [],
+    });
+
+    return newTree;
+  });
+
+  setNewFolderName("");
+}
+
     return (
       <div
         style={{
@@ -452,7 +451,7 @@ async function handleTransaction(data) {
       </div>
 
         {/* Folder upload */}
-        <div>
+        <div style={{ marginBottom: "10px" }}>
           <input
             id="folderInput"
             type="file"
@@ -463,6 +462,16 @@ async function handleTransaction(data) {
             onChange={(e) => setUploadMode("folder")}
           />
           <button type="submit">Upload Folder</button>
+        </div>
+
+        <div className="create-folder" style={{ marginBottom: "10px" }}>
+          <input
+            value={newFolderName}
+            style={{ marginRight: "100px" }}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder="New folder name"
+          />
+          <button onClick={handleCreateFolder}>Create Folder</button>
         </div>
       </form>
     </div>
