@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 
 function App() {
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
   const [fileTree, setFileTree] = useState(null);
@@ -105,7 +107,7 @@ function App() {
 
     try {
       // request backend to prepare transaction
-      const res = await fetch("http://localhost:8000/share", {
+      const res = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, to_address: toAddress, usr_address: account }),
@@ -138,7 +140,7 @@ function App() {
       alert(`Share transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // Verification
-      const verify = await fetch("http://localhost:8000/verify-upload", {
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tx_hash: txHash }),
@@ -181,7 +183,7 @@ function App() {
       formData.append("user_address", account);
       formData.append("folder_path", currentPath); // You can add folder input later
 
-      const response = await fetch("http://localhost:8000/upload", {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
         body: formData,
       });
@@ -222,7 +224,7 @@ function App() {
       alert(`Transaction sent! Hash: ${txHash}. Waiting for confirmation...`);
 
       // Verify transaction was mined
-      const verifyResponse = await fetch("http://localhost:8000/verify-upload", {
+      const verifyResponse = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -256,7 +258,7 @@ function App() {
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
     try {
-      const response = await fetch(`http://localhost:8000/?user_address=${account}`);
+      const response = await fetch(`${API_BASE_URL}/?user_address=${account}`);
       const data = await response.json();
       console.log("Retrieved files data:", data);
       setFiles(data.user_files || []);
@@ -265,7 +267,7 @@ function App() {
       console.error("Error retrieving files:", err);
       setFiles([]);
     }
-  }, [account]);
+  }, [account, API_BASE_URL]);
 
   useEffect(() => {
     if (account) {
@@ -354,7 +356,7 @@ function App() {
                     </div>
 
                     <a
-                      href={`http://localhost:8000/download/${file.cid}/${encodeURIComponent(
+                      href={`${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(
                         file.filename
                       )}`}
                       download={file.filename}
