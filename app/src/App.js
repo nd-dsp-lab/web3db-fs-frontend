@@ -109,7 +109,10 @@ function App() {
       // request backend to prepare transaction
       const res = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
         body: JSON.stringify({ cid, to_address: toAddress, usr_address: account }),
       });
       const payload = await res.json();
@@ -142,7 +145,10 @@ function App() {
       // Verification
       const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
         body: JSON.stringify({ tx_hash: txHash }),
       });
       const verifyData = await verify.json();
@@ -185,6 +191,9 @@ function App() {
 
       const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
+        headers: {
+          "ngrok-skip-browser-warning": "true"
+        },
         body: formData,
       });
       const data = await response.json();
@@ -228,6 +237,7 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
         },
         body: JSON.stringify({ tx_hash: txHash }),
       });
@@ -258,7 +268,11 @@ function App() {
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/?user_address=${account}`);
+      const response = await fetch(`${API_BASE_URL}/?user_address=${account}`, {
+        headers: {
+          "ngrok-skip-browser-warning": "true"
+        }
+      });
       const data = await response.json();
       console.log("Retrieved files data:", data);
       setFiles(data.user_files || []);
