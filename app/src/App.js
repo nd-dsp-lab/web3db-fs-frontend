@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 
 function App() {
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
   const [fileTree, setFileTree] = useState(null);
@@ -105,9 +107,12 @@ function App() {
 
     try {
       // request backend to prepare transaction
-      const response = await fetch("http://localhost:8000/share", {
+      const res = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
         body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
       });
 
@@ -139,9 +144,12 @@ function App() {
       alert(`Share transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // Verification
-      const verify = await fetch("http://localhost:8000/verify-upload", {
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
         body: JSON.stringify({ tx_hash: txHash }),
       });
       const verifyData = await verify.json();
@@ -248,8 +256,11 @@ function App() {
       formData.append("user_address", account);
       formData.append("folder_path", currentPath); // You can add folder input later
 
-      const response = await fetch("http://localhost:8000/upload", {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
         method: "POST",
+        headers: {
+          "ngrok-skip-browser-warning": "true"
+        },
         body: formData,
       });
       const data = await response.json();
@@ -289,10 +300,11 @@ function App() {
       alert(`Transaction sent! Hash: ${txHash}. Waiting for confirmation...`);
 
       // Verify transaction was mined
-      const verifyResponse = await fetch("http://localhost:8000/verify-upload", {
+      const verifyResponse = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
         },
         body: JSON.stringify({ tx_hash: txHash }),
       });
@@ -384,7 +396,11 @@ function App() {
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
     try {
-      const response = await fetch(`http://localhost:8000/?user_address=${account}`);
+      const response = await fetch(`${API_BASE_URL}/?user_address=${account}`, {
+        headers: {
+          "ngrok-skip-browser-warning": "true"
+        }
+      });
       const data = await response.json();
       console.log("Retriedved files data:", data);
       const filesList = data.user_files || [];
@@ -410,7 +426,7 @@ function App() {
       console.error("Error retrieving files:", err);
       setFiles([]);
     }
-  }, [account]);
+  }, [account, API_BASE_URL]);
 
   // derive the tree whenever files change
   useEffect(() => {
@@ -523,7 +539,7 @@ function App() {
                         {/* Top row: Download + Share */}
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                           <a
-                            href={`http://localhost:8000/download/${file.cid}/${encodeURIComponent(
+                            href={`${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(
                               file.filename
                             )}`}
                             download={file.filename}
