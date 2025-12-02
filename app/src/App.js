@@ -116,7 +116,7 @@ function App() {
         body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
       });
 
-      const data = await response.json();
+      const data = await res.json();
       if (!data.transaction) {
         console.error("Share prepare failed", data);
         alert("Failed to prepare share transaction");
