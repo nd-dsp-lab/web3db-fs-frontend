@@ -178,7 +178,7 @@ function App() {
     }
   
     try {
-      const response = await fetch("http://localhost:8000/unshare", {
+      const response = await fetch(`${API_BASE_URL}/unshare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
@@ -213,7 +213,7 @@ function App() {
       alert(`Unshare transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // Verification
-      const verify = await fetch("http://localhost:8000/verify-upload", {
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tx_hash: txHash }),
@@ -339,7 +339,7 @@ function App() {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/delete", {
+      const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, user_address: account }),
@@ -369,7 +369,7 @@ function App() {
       alert(`Delete transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // asking backend to wait for receipt and unpin (verified)
-      const verify = await fetch("http://localhost:8000/verify-upload", {
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tx_hash: txHash }),
@@ -409,7 +409,7 @@ function App() {
       const filesWithShared = await Promise.all(
         filesList.map(async (file) => {
           try {
-            const response = await fetch(`http://localhost:8000/shared-users?cid=${encodeURIComponent(file.cid)}`);
+            const response = await fetch(`${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const shared_data = await response.json();
 
