@@ -135,7 +135,7 @@ function getFolderContents(tree, path) {
         body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
       });
 
-      const data = await res.json();
+      const data = await response.json();
       if (!data.transaction) {
         console.error("Share prepare failed", data);
         alert("Failed to prepare share transaction");
@@ -198,7 +198,6 @@ function getFolderContents(tree, path) {
   
     try {
       const response = await fetch(`${API_BASE_URL}/unshare`, {
-      const response = await fetch(`${API_BASE_URL}/unshare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
@@ -233,7 +232,6 @@ function getFolderContents(tree, path) {
       alert(`Unshare transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // Verification
-      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
       const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -400,7 +398,6 @@ async function handleTransaction(data) {
 
     try {
       const response = await fetch(`${API_BASE_URL}/delete`, {
-      const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, user_address: account }),
@@ -470,7 +467,6 @@ async function handleTransaction(data) {
       const filesWithShared = await Promise.all(
         filesList.map(async (file) => {
           try {
-            const response = await fetch(`${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`);
             const response = await fetch(`${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const shared_data = await response.json();
