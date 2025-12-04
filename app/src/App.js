@@ -197,7 +197,7 @@ function getFolderContents(tree, path) {
     }
   
     try {
-      const response = await fetch("http://localhost:8000/unshare", {
+      const response = await fetch(`${API_BASE_URL}/unshare`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, to_address: toAddress, user_address: account }),
@@ -232,7 +232,7 @@ function getFolderContents(tree, path) {
       alert(`Unshare transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // Verification
-      const verify = await fetch("http://localhost:8000/verify-upload", {
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tx_hash: txHash }),
@@ -254,8 +254,8 @@ function getFolderContents(tree, path) {
       }
     }
   }
-
-  async function uploadFile(event) {
+  
+async function uploadFile(event) {
   event.preventDefault();
 
   const fileInput =
@@ -268,10 +268,12 @@ function getFolderContents(tree, path) {
     alert("Please select a file or folder first!");
     return;
   }
+
   if (!account) {
     alert("Please connect your wallet first!");
     return;
   }
+
   try {
     const formData = new FormData();
     formData.append("user_address", account);
@@ -279,49 +281,43 @@ function getFolderContents(tree, path) {
     if (uploadMode === "folder") {
       // For multiple files inside a folder
       for (const file of files) {
-        const relativePath = file.webkitRelativePath || file.name; // e.g. "web3Example/file.pdf"
-        console.log("Relative Path:", relativePath);
-        const pathParts = relativePath.split("/"); 
-        console.log("Path Parts:", pathParts);
-        const subfolder = pathParts.slice(0, -1).join("/");  // ex: "photos/vacation"
-        // Build full path based on where user clicked
+        const relativePath = file.webkitRelativePath || file.name;
+        const pathParts = relativePath.split("/");
+        const subfolder = pathParts.slice(0, -1).join("/");
+
         const folderPath =
           currentPath === "/"
-            ? "/" + subfolder                 // upload to root
-            : currentPath + "/" + subfolder;  // upload inside selected folder
+            ? "/" + subfolder
+            : currentPath + "/" + subfolder;
 
         formData.append("files", file);
         formData.append("paths", folderPath);
-        // const folderPath = "/" + pathParts.slice(0, -1).join("/"); // e.g. "/web3Example"
-        // console.log("Folder Path:", folderPath);
-        // formData.append("files", file);
-        // formData.append("paths", folderPath);
       }
     } else {
       // For a single file upload
       const file = files[0];
       formData.append("file", file);
-      formData.append("user_address", account);
-      formData.append("folder_path", currentPath); // You can add folder input later
+      formData.append("folder_path", currentPath);
+    }
 
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: "POST",
-        headers: {
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: formData,
-      });
-      const data = await response.json();
-      
-      console.log("Backend response:", data);
-      
-      if (!data.transaction) {
-        alert("Failed to prepare transaction");
-        return;
-      }
+    // Upload request (works for both folder and single file)
+    const response = await fetch(`${API_BASE_URL}/upload`, {
+      method: "POST",
+      headers: { "ngrok-skip-browser-warning": "true" },
+      body: formData,
+    });
+
+    const data = await response.json();
+    console.log("Backend response:", data);
+
+    if (!data.transaction) {
+      alert("Failed to prepare transaction");
+      return;
+    }
 
     console.log("Transaction data:", data.cid);
-    if (uploadMode  && data.cid) {
+
+    if (uploadMode && data.cid) {
       alert(
         `File uploaded to IPFS! CID: ${data.cid}. Now sign the transaction to store on blockchain.`
       );
@@ -401,7 +397,7 @@ async function handleTransaction(data) {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/delete", {
+      const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cid, user_address: account }),
@@ -431,7 +427,7 @@ async function handleTransaction(data) {
       alert(`Delete transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // asking backend to wait for receipt and unpin (verified)
-      const verify = await fetch("http://localhost:8000/verify-upload", {
+      const verify = await fetch(`${API_BASE_URL}/unshare/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tx_hash: txHash }),
@@ -471,7 +467,7 @@ async function handleTransaction(data) {
       const filesWithShared = await Promise.all(
         filesList.map(async (file) => {
           try {
-            const response = await fetch(`http://localhost:8000/shared-users?cid=${encodeURIComponent(file.cid)}`);
+            const response = await fetch(`${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const shared_data = await response.json();
 
