@@ -107,7 +107,7 @@ function App() {
 
     try {
       // request backend to prepare transaction
-      const res = await fetch(`${API_BASE_URL}/share`, {
+      const response = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
