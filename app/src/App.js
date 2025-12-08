@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 
 function App() {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  // ------ REMEMBER TO SWITCH THIS BACK BEFORE PUSHING ---------
+  const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
@@ -27,60 +29,72 @@ function App() {
   }
 
   // Build a tree from files array
-function buildFileTree(files) {
-  const root = { name: "/", type: "folder", children: [] };
+  function buildFileTree(files) {
+    const root = { name: "/", type: "folder", children: [] };
 
-  for (const file of files) {
-    const path = file.folder_path || "/";
-    const parts = path.split("/").filter(Boolean); // split by "/" and remove empty strings
+    for (const file of files) {
+      const path = file.folder_path || "/";
+      const parts = path.split("/").filter(Boolean); // split by "/" and remove empty strings
 
-    let currentNode = root;
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-
-      // Check if this is the last part and contains a file (has a dot)
-      const isFile = i === parts.length - 1 && file.filename.includes(".");
-
-      if (isFile) {
-        currentNode.children.push({
+      // 1) File is in root -> no folder parts needed
+      if (parts.length === 0) {
+        root.children.push({
           ...file,
           type: "file",
           name: file.filename,
         });
-      } else {
-        // Look for existing folder node
-        let folderNode = currentNode.children.find(
-          (c) => c.type === "folder" && c.name === part
-        );
-        if (!folderNode) {
-          folderNode = { name: part, type: "folder", children: [] };
-          currentNode.children.push(folderNode);
+        continue;
+      }
+
+      // OR 2) File is inside subfolders
+      let currentNode = root;
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+
+        // Check if this is the last part and contains a file (has a dot)
+        const isLast = i === parts.length - 1;
+        const isFile = isLast && file.filename.includes(".");
+
+        if (isFile) {
+          currentNode.children.push({
+            ...file,
+            type: "file",
+            name: file.filename,
+          });
+        } else {
+          // Look for existing folder node
+          let folderNode = currentNode.children.find(
+            (c) => c.type === "folder" && c.name === part
+          );
+          if (!folderNode) {
+            folderNode = { name: part, type: "folder", children: [] };
+            currentNode.children.push(folderNode);
+          }
+          currentNode = folderNode;
         }
-        currentNode = folderNode;
       }
     }
-  }
-  return root;
-}
-
-// Get folder contents (files + subfolders)
-function getFolderContents(tree, path) {
-  if (!tree) return [];
-
-  if (path === "/" || path === "") {
-    return tree.children;
+    return root;
   }
 
-  const parts = path.split("/").filter(Boolean);
-  let node = tree;
-  for (const part of parts) {
-    node = node?.children.find((c) => c.type === "folder" && c.name === part);
-    if (!node) return [];
-  }
+  // Get folder contents (files + subfolders)
+  function getFolderContents(tree, path) {
+    if (!tree) return [];
 
-  return node.children || [];
-}
+    if (path === "/" || path === "") {
+      return tree.children;
+    }
+
+    const parts = path.split("/").filter(Boolean);
+    let node = tree;
+    for (const part of parts) {
+      node = node?.children.find((c) => c.type === "folder" && c.name === part);
+      if (!node) return [];
+    }
+
+    return node.children || [];
+  }
 
   async function ensureSepolia() {
     const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
@@ -255,105 +269,105 @@ function getFolderContents(tree, path) {
     }
   }
   
-async function uploadFile(event) {
-  event.preventDefault();
+  async function uploadFile(event) {
+    event.preventDefault();
 
-  const fileInput =
-    uploadMode === "folder"
-      ? document.getElementById("folderInput")
-      : document.getElementById("singleFileInput");
+    const fileInput =
+      uploadMode === "folder"
+        ? document.getElementById("folderInput")
+        : document.getElementById("singleFileInput");
 
-  const files = fileInput?.files;
-  if (!files || files.length === 0) {
-    alert("Please select a file or folder first!");
-    return;
-  }
-
-  if (!account) {
-    alert("Please connect your wallet first!");
-    return;
-  }
-
-  try {
-    const formData = new FormData();
-    formData.append("user_address", account);
-
-    if (uploadMode === "folder") {
-      // For multiple files inside a folder
-      for (const file of files) {
-        const relativePath = file.webkitRelativePath || file.name;
-        const pathParts = relativePath.split("/");
-        const subfolder = pathParts.slice(0, -1).join("/");
-
-        const folderPath =
-          currentPath === "/"
-            ? "/" + subfolder
-            : currentPath + "/" + subfolder;
-
-        formData.append("files", file);
-        formData.append("paths", folderPath);
-      }
-    } else {
-      // For a single file upload
-      const file = files[0];
-      formData.append("file", file);
-      formData.append("folder_path", currentPath);
-    }
-
-    // Upload request (works for both folder and single file)
-    const response = await fetch(`${API_BASE_URL}/upload`, {
-      method: "POST",
-      headers: { "ngrok-skip-browser-warning": "true" },
-      body: formData,
-    });
-
-    const data = await response.json();
-    console.log("Backend response:", data);
-
-    if (!data.transaction) {
-      alert("Failed to prepare transaction");
+    const files = fileInput?.files;
+    if (!files || files.length === 0) {
+      alert("Please select a file or folder first!");
       return;
     }
 
-    console.log("Transaction data:", data.cid);
-
-    if (uploadMode && data.cid) {
-      alert(
-        `File uploaded to IPFS! CID: ${data.cid}. Now sign the transaction to store on blockchain.`
-      );
-      await handleTransaction(data);
-    } else {
-      alert("Upload successful!");
-      retrieveFiles();
+    if (!account) {
+      alert("Please connect your wallet first!");
+      return;
     }
-  } catch (error) {
-    console.error("Upload failed:", error);
-    alert("Upload failed: " + (error.message || "Unknown error"));
-  }
-}  // <-- Close uploadFile function here (remove the extra closing braces above)
 
-async function handleTransaction(data) {
-  try {
-    await ensureSepolia();
+    try {
+      const formData = new FormData();
+      formData.append("user_address", account);
 
-    const transaction = {
-      ...data.transaction,
-      gas: data.transaction.gas
-        ? `0x${data.transaction.gas.toString(16)}`
-        : data.transaction.gas,
-      gasPrice: data.transaction.gasPrice
-        ? `0x${data.transaction.gasPrice.toString(16)}`
-        : data.transaction.gasPrice,
-      nonce: data.transaction.nonce
-        ? `0x${data.transaction.nonce.toString(16)}`
-        : data.transaction.nonce,
-      value: data.transaction.value || "0x0",
-    };
+      if (uploadMode === "folder") {
+        // For multiple files inside a folder
+        for (const file of files) {
+          const relativePath = file.webkitRelativePath || file.name;
+          const pathParts = relativePath.split("/");
+          const subfolder = pathParts.slice(0, -1).join("/");
 
-    const txHash = await window.ethereum.request({
-      method: "eth_sendTransaction",
-      params: [transaction],
-    });
+          const folderPath =
+            currentPath === "/"
+              ? "/" + subfolder
+              : currentPath + "/" + subfolder;
+
+          formData.append("files", file);
+          formData.append("paths", folderPath);
+        }
+      } else {
+        // For a single file upload
+        const file = files[0];
+        formData.append("file", file);
+        formData.append("folder_path", currentPath);
+      }
+
+      // Upload request (works for both folder and single file)
+      const response = await fetch(`${API_BASE_URL}/upload`, {
+        method: "POST",
+        headers: { "ngrok-skip-browser-warning": "true" },
+        body: formData,
+      });
+
+      const data = await response.json();
+      console.log("Backend response:", data);
+
+      if (!data.transaction) {
+        alert("Failed to prepare transaction");
+        return;
+      }
+
+      console.log("Transaction data:", data.cid);
+
+      if (uploadMode && data.cid) {
+        alert(
+          `File uploaded to IPFS! CID: ${data.cid}. Now sign the transaction to store on blockchain.`
+        );
+        await handleTransaction(data);
+      } else {
+        alert("Upload successful!");
+        retrieveFiles();
+      }
+    } catch (error) {
+      console.error("Upload failed:", error);
+      alert("Upload failed: " + (error.message || "Unknown error"));
+    }
+  }  // <-- Close uploadFile function here (remove the extra closing braces above)
+
+  async function handleTransaction(data) {
+    try {
+      await ensureSepolia();
+
+      const transaction = {
+        ...data.transaction,
+        gas: data.transaction.gas
+          ? `0x${data.transaction.gas.toString(16)}`
+          : data.transaction.gas,
+        gasPrice: data.transaction.gasPrice
+          ? `0x${data.transaction.gasPrice.toString(16)}`
+          : data.transaction.gasPrice,
+        nonce: data.transaction.nonce
+          ? `0x${data.transaction.nonce.toString(16)}`
+          : data.transaction.nonce,
+        value: data.transaction.value || "0x0",
+      };
+
+      const txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [transaction],
+      });
 
     alert(`Transaction sent! Hash: ${txHash}. Waiting for confirmation...`);
 
@@ -480,6 +494,12 @@ async function handleTransaction(data) {
       );
 
       setFiles(filesWithShared || []);
+
+      const fileTree = buildFileTree(filesWithShared);
+      console.log("Built file tree:", fileTree);
+
+      setFileTree(fileTree);
+
     } catch (err) {
       console.error("Error retrieving files:", err);
       setFiles([]);
@@ -487,9 +507,9 @@ async function handleTransaction(data) {
   }, [account, API_BASE_URL]);
 
   // derive the tree whenever files change
-  useEffect(() => {
-    setFileTree(buildFileTree(files));
-  }, [files]);
+  // useEffect(() => {
+  //   setFileTree(buildFileTree(files));
+  // }, [files]);
 
     useEffect(() => {
       if (account) {
@@ -529,41 +549,41 @@ async function handleTransaction(data) {
       );
     }
 
-function handleCreateFolder() {
-  if (!newFolderName.trim()) return;
+  function handleCreateFolder() {
+    if (!newFolderName.trim()) return;
 
-  const cleanName = newFolderName.trim();
+    const cleanName = newFolderName.trim();
 
-  setFileTree((prevTree) => {
-    const newTree = structuredClone(prevTree); // safe deep copy
+    setFileTree((prevTree) => {
+      const newTree = structuredClone(prevTree); // safe deep copy
 
-    // Navigate to the correct node based on currentPath
-    const parts = currentPath === "/"
-      ? []
-      : currentPath.split("/").filter(Boolean);
+      // Navigate to the correct node based on currentPath
+      const parts = currentPath === "/"
+        ? []
+        : currentPath.split("/").filter(Boolean);
 
-    let node = newTree;
+      let node = newTree;
 
-    for (const p of parts) {
-      node = node.children.find(
-        (c) => c.type === "folder" && c.name === p
-      );
+      for (const p of parts) {
+        node = node.children.find(
+          (c) => c.type === "folder" && c.name === p
+        );
 
-      if (!node) return prevTree; // safety: don't crash
-    }
+        if (!node) return prevTree; // safety: don't crash
+      }
 
-    // Create the new folder (ONLY FRONTEND)
-    node.children.push({
-      name: cleanName,
-      type: "folder",
-      children: [],
+      // Create the new folder (ONLY FRONTEND)
+      node.children.push({
+        name: cleanName,
+        type: "folder",
+        children: [],
+      });
+
+      return newTree;
     });
 
-    return newTree;
-  });
-
-  setNewFolderName("");
-}
+    setNewFolderName("");
+  }
 
     return (
       <div
