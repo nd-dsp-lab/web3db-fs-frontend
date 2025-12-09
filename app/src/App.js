@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 
+// Bitmasks for permissions
+const READ = 1 << 0
+const WRITE = 1 << 1
+const DOWNLOAD = 1<< 2
+const DELETE = 1 << 3
+const SHARE = 1 << 4
+const MOVE = 1 << 5
+const CHANGE_OWNER = 1 << 6
+const CHANGE_ROLE = 1 << 7 
+
 function App() {
   // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH THIS BACK BEFORE PUSHING ---------
@@ -441,7 +451,7 @@ function App() {
       alert(`Delete transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // asking backend to wait for receipt and unpin (verified)
-      const verify = await fetch(`${API_BASE_URL}/unshare/verify-upload`, {
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tx_hash: txHash }),
@@ -474,7 +484,7 @@ function App() {
         }
       });
       const data = await response.json();
-      console.log("Retriedved files data:", data);
+      console.log("Retrieved files data:", data);
       const filesList = data.user_files || [];
 
       // get the shared-user list for each file as well
@@ -655,7 +665,6 @@ function App() {
                   
                   let sharedList = file.shared_with
                   if (!Array.isArray(sharedList)) sharedList = [];
-                  // if entries are objects, try to extract address fields
                   if (sharedList.length > 0 && typeof sharedList[0] === "object") {
                     sharedList = sharedList.map(s => s.address || s.to || s.owner || JSON.stringify(s));
                   }
@@ -686,50 +695,57 @@ function App() {
                         )}
                       </div>
 
-                      {/* Right side: two-row button layout */}
+                      {/* Button container */}
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
                         {/* Top row: Download + Share */}
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          <a
-                            href={`${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(
-                              file.filename
-                            )}`}
-                            download={file.filename}
-                            style={{
-                              color: "#0066cc",
-                              textDecoration: "none",
-                              border: "1px solid #0066cc",
-                              borderRadius: "4px",
-                              padding: "4px 8px",
-                              fontSize: "0.85em",
-                            }}
-                          >
-                            Download
-                          </a>
 
-                          <button
-                            onClick={async () => {
-                                  const to = window.prompt("Enter recipient Ethereum address (0x...)");
-                                  if (!to) return;
-                                  await handleShare(file.cid, to);
-                                }}
-                                style={{
-                                  background: "#00a86b",
-                                  color: "#fff",
-                                  border: "none",
-                                  borderRadius: "4px",
-                                  padding: "6px 10px",
-                                  cursor: "pointer",
-                                  fontSize: "0.85em",
-                                }}
-                          >
-                            Share
-                          </button>
+                          {/* DOWNLOAD — only if user has DOWNLOAD permission */}
+                          {(file.permissions & DOWNLOAD) !== 0 && (
+                            <a
+                              href={`${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`}
+                              download={file.filename}
+                              style={{
+                                color: "#0066cc",
+                                textDecoration: "none",
+                                border: "1px solid #0066cc",
+                                borderRadius: "4px",
+                                padding: "4px 8px",
+                                fontSize: "0.85em",
+                              }}
+                            >
+                              Download
+                            </a>
+                          )}
+
+                          {/* SHARE — only if user is owner */}
+                          {file.is_owner && (
+                            <button
+                              onClick={async () => {
+                                const to = window.prompt("Enter recipient Ethereum address (0x...)");
+                                if (!to) return;
+                                await handleShare(file.cid, to);
+                              }}
+                              style={{
+                                background: "#00a86b",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "4px",
+                                padding: "6px 10px",
+                                cursor: "pointer",
+                                fontSize: "0.85em",
+                              }}
+                            >
+                              Share
+                            </button>
+                          )}
                         </div>
 
-                        {/* Bottom row: Unshare (conditional) + Delete */}
+                        {/* Bottom row: Unshare + Delete */}
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          {hasShared && (
+
+                          {/* UNSHARE — only if shared_with is non-empty AND user is owner */}
+                          {file.is_owner && hasShared && (
                             <button
                               onClick={async () => {
                                 let addrToUnshare = null;
@@ -739,11 +755,10 @@ function App() {
                                   addrToUnshare = sharedList[0];
                                 } else {
                                   const listText = sharedList.join(", ");
-                                  const promptMsg = `File "${file.filename}" is shared with: ${listText}\n\nEnter the address to unshare (copy/paste exactly):`;
+                                  const promptMsg = `File "${file.filename}" is shared with: ${listText}\n\nEnter the address to unshare:`;
                                   const chosen = window.prompt(promptMsg);
                                   if (!chosen) return;
                                   addrToUnshare = chosen.trim();
-                                  if (!addrToUnshare) return;
                                 }
                                 await handleUnshare(file.cid, addrToUnshare);
                               }}
@@ -761,24 +776,27 @@ function App() {
                             </button>
                           )}
 
-                          <button
-                            onClick={async () => {
-                              const ok = window.confirm(`Delete file "${file.filename}" (CID: ${file.cid})?`);
-                              if (!ok) return;
-                              await handleDelete(file.cid);
-                            }}
-                            style={{
-                              background: "#d9534f",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "4px",
-                              padding: "6px 10px",
-                              cursor: "pointer",
-                              fontSize: "0.85em",
-                            }}
-                          >
-                            Delete
-                          </button>
+                          {/* DELETE — only if owner */}
+                          {file.is_owner && (
+                            <button
+                              onClick={async () => {
+                                const ok = window.confirm(`Delete file "${file.filename}" (CID: ${file.cid})?`);
+                                if (!ok) return;
+                                await handleDelete(file.cid);
+                              }}
+                              style={{
+                                background: "#d9534f",
+                                color: "#fff",
+                                border: "none",
+                                borderRadius: "4px",
+                                padding: "6px 10px",
+                                cursor: "pointer",
+                                fontSize: "0.85em",
+                              }}
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
