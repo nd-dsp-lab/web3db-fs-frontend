@@ -38,13 +38,65 @@ function App() {
     }
   }
 
-  // Build a tree from files array
+  // // Build a tree from files array
+  // function buildFileTree(files) {
+  //   const root = { name: "/", type: "folder", children: [] };
+
+  //   for (const file of files) {
+  //     const path = file.folder_path || "/";
+  //     const parts = path.split("/").filter(Boolean); // split by "/" and remove empty strings
+
+  //     // 1) File is in root -> no folder parts needed
+  //     if (parts.length === 0) {
+  //       root.children.push({
+  //         ...file,
+  //         type: "file",
+  //         name: file.filename,
+  //       });
+  //       continue;
+  //     }
+
+  //     // OR 2) File is inside subfolders
+  //     let currentNode = root;
+
+  //     for (let i = 0; i < parts.length; i++) {
+  //       const part = parts[i];
+
+  //       // Check if this is the last part and contains a file (has a dot)
+  //       const isLast = i === parts.length - 1;
+  //       const isFile = isLast && file.filename.includes(".");
+
+  //       if (isFile) {
+  //         currentNode.children.push({
+  //           ...file,
+  //           type: "file",
+  //           name: file.filename,
+  //         });
+  //       } else {
+  //         // Look for existing folder node
+  //         let folderNode = currentNode.children.find(
+  //           (c) => c.type === "folder" && c.name === part
+  //         );
+  //         if (!folderNode) {
+  //           folderNode = { name: part, type: "folder", children: [] };
+  //           currentNode.children.push(folderNode);
+  //         }
+  //         currentNode = folderNode;
+  //       }
+  //     }
+  //   }
+  //   return root;
+  // }
+
+   // Build a tree from files array
   function buildFileTree(files) {
     const root = { name: "/", type: "folder", children: [] };
 
     for (const file of files) {
       const path = file.folder_path || "/";
-      const parts = path.split("/").filter(Boolean); // split by "/" and remove empty strings
+      // Clean the path: remove leading/trailing slashes, then split and filter
+      const cleanPath = path.replace(/^\/+|\/+$/g, '');
+      const parts = cleanPath ? cleanPath.split("/").filter(Boolean) : [];
 
       // 1) File is in root -> no folder parts needed
       if (parts.length === 0) {
@@ -56,34 +108,29 @@ function App() {
         continue;
       }
 
-      // OR 2) File is inside subfolders
+      // 2) File is inside subfolders - navigate/create the folder structure
       let currentNode = root;
 
       for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
 
-        // Check if this is the last part and contains a file (has a dot)
-        const isLast = i === parts.length - 1;
-        const isFile = isLast && file.filename.includes(".");
-
-        if (isFile) {
-          currentNode.children.push({
-            ...file,
-            type: "file",
-            name: file.filename,
-          });
-        } else {
-          // Look for existing folder node
-          let folderNode = currentNode.children.find(
-            (c) => c.type === "folder" && c.name === part
-          );
-          if (!folderNode) {
-            folderNode = { name: part, type: "folder", children: [] };
-            currentNode.children.push(folderNode);
-          }
-          currentNode = folderNode;
+        // Look for existing folder node
+        let folderNode = currentNode.children.find(
+          (c) => c.type === "folder" && c.name === part
+        );
+        if (!folderNode) {
+          folderNode = { name: part, type: "folder", children: [] };
+          currentNode.children.push(folderNode);
         }
+        currentNode = folderNode;
       }
+
+      // After navigating through all folders, add the file
+      currentNode.children.push({
+        ...file,
+        type: "file",
+        name: file.filename,
+      });
     }
     return root;
   }
@@ -187,6 +234,7 @@ function App() {
       alert(`Share transaction sent: ${txHash}. Waiting for confirmation...`);
 
       // Verification
+      console.log("Verifying share transaction:", txHash);
       const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
         headers: { 
@@ -300,36 +348,43 @@ function App() {
 
     try {
       const formData = new FormData();
-      formData.append("user_address", account);
 
       if (uploadMode === "folder") {
+        console.log("uploading folder with files:", files);
         // For multiple files inside a folder
         for (const file of files) {
           const relativePath = file.webkitRelativePath || file.name;
-          const pathParts = relativePath.split("/");
-          const subfolder = pathParts.slice(0, -1).join("/");
-
-          const folderPath =
+          // prepend currentPath if needed
+          const fullPath =
             currentPath === "/"
-              ? "/" + subfolder
-              : currentPath + "/" + subfolder;
+              ? "/" + relativePath
+              : currentPath + "/" + relativePath;
 
           formData.append("files", file);
-          formData.append("paths", folderPath);
+          formData.append("paths", fullPath);
+          formData.append("user_address", account);
+
+          console.log("Appending:", fullPath);
         }
       } else {
         // For a single file upload
         const file = files[0];
         formData.append("file", file);
         formData.append("folder_path", currentPath);
+        formData.append("user_address", account);
       }
 
       // Upload request (works for both folder and single file)
-      const response = await fetch(`${API_BASE_URL}/upload`, {
-        method: "POST",
-        headers: { "ngrok-skip-browser-warning": "true" },
-        body: formData,
-      });
+      const response = await fetch(
+        uploadMode === "folder" 
+          ? `${API_BASE_URL}/upload-folder`
+          : `${API_BASE_URL}/upload`,
+        {
+          method: "POST",
+          headers: { "ngrok-skip-browser-warning": "true" },
+          body: formData,
+        }
+      );
 
       const data = await response.json();
       console.log("Backend response:", data);
@@ -340,6 +395,8 @@ function App() {
       }
 
       console.log("Transaction data:", data.cid);
+      console.log("Upload mode:", uploadMode);
+      console.log("Account:", data.cid);
 
       if (uploadMode && data.cid) {
         alert(
