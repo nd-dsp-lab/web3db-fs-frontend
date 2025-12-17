@@ -336,9 +336,15 @@ function App() {
         : document.getElementById("singleFileInput");
 
     const files = fileInput?.files;
-    if (!files || files.length === 0) {
-      alert("Please select a file or folder first!");
+    if ((!files || files.length === 0) && uploadMode !== "folder") {
+      alert("Please select a file first!");
       return;
+    }
+
+    let emptyFolderFlag = 0;
+
+    if (files.length === 0 && uploadMode === "folder") {
+      emptyFolderFlag = 1;
     }
 
     if (!account) {
@@ -389,7 +395,8 @@ function App() {
       const data = await response.json();
       console.log("Backend response:", data);
 
-      if (!data.transaction) {
+      if (!data.transaction && !emptyFolderFlag) {
+        alert(emptyFolderFlag)
         alert("Failed to prepare transaction");
         return;
       }
@@ -411,7 +418,7 @@ function App() {
       console.error("Upload failed:", error);
       alert("Upload failed: " + (error.message || "Unknown error"));
     }
-  }  // <-- Close uploadFile function here (remove the extra closing braces above)
+  }
 
   async function handleTransaction(data) {
     try {
@@ -620,6 +627,7 @@ function App() {
     if (!newFolderName.trim()) return;
 
     const cleanName = newFolderName.trim();
+    setUploadMode("folder");
 
     setFileTree((prevTree) => {
       const newTree = structuredClone(prevTree); // safe deep copy
