@@ -3,17 +3,17 @@ import React, { useState, useEffect, useCallback } from "react";
 // Bitmasks for permissions
 const READ = 1 << 0
 const WRITE = 1 << 1
-const DOWNLOAD = 1<< 2
+const DOWNLOAD = 1 << 2
 const DELETE = 1 << 3
 const SHARE = 1 << 4
 const MOVE = 1 << 5
 const CHANGE_OWNER = 1 << 6
-const CHANGE_ROLE = 1 << 7 
+const CHANGE_ROLE = 1 << 7
 
 function App() {
-  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH THIS BACK BEFORE PUSHING ---------
-  const API_BASE_URL = "http://localhost:8090";  // for testing
+  // const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
@@ -88,7 +88,7 @@ function App() {
   //   return root;
   // }
 
-   // Build a tree from files array
+  // Build a tree from files array
   function buildFileTree(files) {
     const root = { name: "/", type: "folder", children: [] };
 
@@ -199,7 +199,7 @@ function App() {
       // request backend to prepare transaction
       const response = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "ngrok-skip-browser-warning": "true"
         },
@@ -218,7 +218,7 @@ function App() {
       await ensureSepolia();
 
       // Ensure all transaction fields are properly formatted
-      const fields = {...txn};
+      const fields = { ...txn };
       fields.gas = toHexifNumber(fields.gas);
       fields.gasPrice = toHexifNumber(fields.gasPrice);
       fields.nonce = toHexifNumber(fields.nonce);
@@ -237,7 +237,7 @@ function App() {
       console.log("Verifying share transaction:", txHash);
       const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "ngrok-skip-browser-warning": "true"
         },
@@ -253,10 +253,10 @@ function App() {
       }
     } catch (err) {
       console.error("Share flow error", err);
-      if(err?.code === 4001) {
+      if (err?.code === 4001) {
         alert("Transaction rejected by user");
       } else {
-        alert("Share failed: " + (err?.message || err?.reason || err.toString()) );
+        alert("Share failed: " + (err?.message || err?.reason || err.toString()));
       }
     }
   }
@@ -267,7 +267,7 @@ function App() {
       alert("Connect wallet first");
       return;
     }
-  
+
     try {
       const response = await fetch(`${API_BASE_URL}/unshare`, {
         method: "POST",
@@ -288,7 +288,7 @@ function App() {
       await ensureSepolia();
 
       // Ensure all transaction fields are properly formatted
-      const fields = {...txn};
+      const fields = { ...txn };
       fields.gas = toHexifNumber(fields.gas);
       fields.gasPrice = toHexifNumber(fields.gasPrice);
       fields.nonce = toHexifNumber(fields.nonce);
@@ -319,14 +319,14 @@ function App() {
       }
     } catch (err) {
       console.error("Unshare flow error", err);
-      if(err?.code === 4001) {
+      if (err?.code === 4001) {
         alert("Transaction rejected by user");
       } else {
-        alert("Unshare failed: " + (err?.message || err?.reason || err.toString()) );
+        alert("Unshare failed: " + (err?.message || err?.reason || err.toString()));
       }
     }
   }
-  
+
   async function uploadFile(event) {
     event.preventDefault();
 
@@ -382,7 +382,7 @@ function App() {
 
       // Upload request (works for both folder and single file)
       const response = await fetch(
-        uploadMode === "folder" 
+        uploadMode === "folder"
           ? `${API_BASE_URL}/upload-folder`
           : `${API_BASE_URL}/upload`,
         {
@@ -443,7 +443,7 @@ function App() {
         params: [transaction],
       });
 
-    alert(`Transaction sent! Hash: ${txHash}. Waiting for confirmation...`);
+      alert(`Transaction sent! Hash: ${txHash}. Waiting for confirmation...`);
 
       // Verify transaction was mined
       const verifyResponse = await fetch(`${API_BASE_URL}/verify-upload`, {
@@ -454,9 +454,9 @@ function App() {
         },
         body: JSON.stringify({ tx_hash: txHash }),
       });
-      
+
       const verifyData = await verifyResponse.json();
-      
+
       if (verifyData.success) {
         alert(`File successfully stored on blockchain! Transaction: ${txHash}`);
         // Refresh the files list after successful upload
@@ -500,7 +500,7 @@ function App() {
 
       await ensureSepolia();
 
-      const fields = {...txn};
+      const fields = { ...txn };
       fields.gas = toHexifNumber(fields.gas);
       fields.gasPrice = toHexifNumber(fields.gasPrice);
       fields.nonce = toHexifNumber(fields.nonce);
@@ -530,10 +530,10 @@ function App() {
       }
     } catch (err) {
       console.error("Delete error", err);
-      if(err?.code === 4001) {
+      if (err?.code === 4001) {
         alert("Transaction rejected by user");
       } else {
-        alert("Delete failed: " + (err?.message || err?.reason || err.toString()) );
+        alert("Delete failed: " + (err?.message || err?.reason || err.toString()));
       }
     }
   }
@@ -585,43 +585,43 @@ function App() {
   //   setFileTree(buildFileTree(files));
   // }, [files]);
 
-    useEffect(() => {
-      if (account) {
-        retrieveFiles();
-      }
-    }, [account, retrieveFiles]);
-    
-    function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
-      const fullPath = `${parentPath}/${node.name}`;
-      return (
-        <div style={{ marginLeft: "10px" }}>
-          <div
-            onClick={() => setCurrentPath(fullPath)}
-            style={{
-              padding: "4px 6px",
-              border: "1px solid #ddd",
-              borderRadius: "4px",
-              background: currentPath === fullPath ? "#f0f0f0" : "#fff",
-              cursor: "pointer",
-              marginBottom: "2px",
-            }}
-          >
-            {node.name}
-          </div>
-          {node.children
-            .filter((c) => c.type === "folder")
-            .map((child) => (
-              <FolderNode
-                key={child.name}
-                node={child}
-                parentPath={fullPath}
-                currentPath={currentPath}
-                setCurrentPath={setCurrentPath}
-              />
-            ))}
-        </div>
-      );
+  useEffect(() => {
+    if (account) {
+      retrieveFiles();
     }
+  }, [account, retrieveFiles]);
+
+  function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
+    const fullPath = `${parentPath}/${node.name}`;
+    return (
+      <div style={{ marginLeft: "10px" }}>
+        <div
+          onClick={() => setCurrentPath(fullPath)}
+          style={{
+            padding: "4px 6px",
+            border: "1px solid #ddd",
+            borderRadius: "4px",
+            background: currentPath === fullPath ? "#f0f0f0" : "#fff",
+            cursor: "pointer",
+            marginBottom: "2px",
+          }}
+        >
+          {node.name}
+        </div>
+        {node.children
+          .filter((c) => c.type === "folder")
+          .map((child) => (
+            <FolderNode
+              key={child.name}
+              node={child}
+              parentPath={fullPath}
+              currentPath={currentPath}
+              setCurrentPath={setCurrentPath}
+            />
+          ))}
+      </div>
+    );
+  }
 
   function handleCreateFolder() {
     if (!newFolderName.trim()) return;
@@ -660,19 +660,19 @@ function App() {
     setNewFolderName("");
   }
 
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "flex-start",
-          minHeight: "100vh",
-          padding: "40px 20px",
-          backgroundColor: "#fafafa",
-        }}
-      >
-        <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        minHeight: "100vh",
+        padding: "40px 20px",
+        backgroundColor: "#fafafa",
+      }}
+    >
+      <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
 
       <button onClick={connectWallet} style={{ marginBottom: "20px" }}>
         <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
@@ -727,7 +727,7 @@ function App() {
               {getFolderContents(fileTree, currentPath)
                 .filter((item) => item.type === "file")
                 .map((file, index) => {
-                  
+
                   let sharedList = file.shared_with
                   if (!Array.isArray(sharedList)) sharedList = [];
                   if (sharedList.length > 0 && typeof sharedList[0] === "object") {
@@ -876,16 +876,16 @@ function App() {
 
       {/* Upload form centered below everything */}
       <form onSubmit={uploadFile} style={{ marginTop: "30px", textAlign: "center" }}>
-      {/* Single file upload */}
-      <div style={{ marginBottom: "10px" }}>
-        <input
-          id="singleFileInput"
-          type="file"
-          style={{ marginRight: "10px" }}
-          onChange={(e) => setUploadMode("single")}
-        />
-        <button type="submit">Upload File</button>
-      </div>
+        {/* Single file upload */}
+        <div style={{ marginBottom: "10px" }}>
+          <input
+            id="singleFileInput"
+            type="file"
+            style={{ marginRight: "10px" }}
+            onChange={(e) => setUploadMode("single")}
+          />
+          <button type="submit">Upload File</button>
+        </div>
 
         {/* Folder upload */}
         <div style={{ marginBottom: "10px" }}>
