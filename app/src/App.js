@@ -11,9 +11,9 @@ const CHANGE_OWNER = 1 << 6
 const CHANGE_ROLE = 1 << 7
 
 function App() {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH THIS BACK BEFORE PUSHING ---------
-  // const API_BASE_URL = "http://localhost:8090";  // for testing
+  const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
@@ -22,6 +22,9 @@ function App() {
   const [folderPath, setFolderPath] = useState("/");
   const [uploadMode, setUploadMode] = useState("single");
   const [newFolderName, setNewFolderName] = useState("");
+  
+  // Track empty folders (folders with no files) to persist them across retrieveFiles calls
+  const [emptyFolders, setEmptyFolders] = useState(new Set());
 
   async function connectWallet() {
     if (window.ethereum) {
@@ -38,60 +41,47 @@ function App() {
     }
   }
 
-  // // Build a tree from files array
-  // function buildFileTree(files) {
-  //   const root = { name: "/", type: "folder", children: [] };
+  // Helper function to merge empty folders into the tree structure
+  function mergeEmptyFoldersIntoTree(tree, emptyFoldersSet) {
+    if (!emptyFoldersSet || emptyFoldersSet.size === 0) {
+      return tree;
+    }
 
-  //   for (const file of files) {
-  //     const path = file.folder_path || "/";
-  //     const parts = path.split("/").filter(Boolean); // split by "/" and remove empty strings
+    // For each empty folder path, ensure it exists in the tree
+    emptyFoldersSet.forEach(folderPath => {
+      // Skip root
+      if (folderPath === "/" || !folderPath) return;
 
-  //     // 1) File is in root -> no folder parts needed
-  //     if (parts.length === 0) {
-  //       root.children.push({
-  //         ...file,
-  //         type: "file",
-  //         name: file.filename,
-  //       });
-  //       continue;
-  //     }
+      // Parse path: "/documents/projects" -> ["documents", "projects"]
+      const parts = folderPath.split("/").filter(Boolean);
+      if (parts.length === 0) return;
 
-  //     // OR 2) File is inside subfolders
-  //     let currentNode = root;
+      let currentNode = tree;
 
-  //     for (let i = 0; i < parts.length; i++) {
-  //       const part = parts[i];
+      // Navigate/create folder structure
+      for (const part of parts) {
+        let folderNode = currentNode.children.find(
+          c => c.type === "folder" && c.name === part
+        );
 
-  //       // Check if this is the last part and contains a file (has a dot)
-  //       const isLast = i === parts.length - 1;
-  //       const isFile = isLast && file.filename.includes(".");
+        // Create folder if it doesn't exist
+        if (!folderNode) {
+          folderNode = { name: part, type: "folder", children: [] };
+          currentNode.children.push(folderNode);
+        }
 
-  //       if (isFile) {
-  //         currentNode.children.push({
-  //           ...file,
-  //           type: "file",
-  //           name: file.filename,
-  //         });
-  //       } else {
-  //         // Look for existing folder node
-  //         let folderNode = currentNode.children.find(
-  //           (c) => c.type === "folder" && c.name === part
-  //         );
-  //         if (!folderNode) {
-  //           folderNode = { name: part, type: "folder", children: [] };
-  //           currentNode.children.push(folderNode);
-  //         }
-  //         currentNode = folderNode;
-  //       }
-  //     }
-  //   }
-  //   return root;
-  // }
+        currentNode = folderNode;
+      }
+    });
 
-  // Build a tree from files array
-  function buildFileTree(files) {
+    return tree;
+  }
+
+  // Build a tree from files array and merge empty folders
+  function buildFileTree(files, emptyFoldersSet = new Set()) {
     const root = { name: "/", type: "folder", children: [] };
 
+    // Build tree from files
     for (const file of files) {
       const path = file.folder_path || "/";
       // Clean the path: remove leading/trailing slashes, then split and filter
@@ -132,7 +122,9 @@ function App() {
         name: file.filename,
       });
     }
-    return root;
+
+    // Merge empty folders into the tree
+    return mergeEmptyFoldersIntoTree(root, emptyFoldersSet);
   }
 
   // Get folder contents (files + subfolders)
@@ -411,7 +403,7 @@ function App() {
         );
         await handleTransaction(data);
       } else {
-        alert("Upload successful!");
+        alert("Folder created!");
         retrieveFiles();
       }
     } catch (error) {
@@ -569,7 +561,8 @@ function App() {
 
       setFiles(filesWithShared || []);
 
-      const fileTree = buildFileTree(filesWithShared);
+      // Pass emptyFolders to buildFileTree to preserve empty folders
+      const fileTree = buildFileTree(filesWithShared, emptyFolders);
       console.log("Built file tree:", fileTree);
 
       setFileTree(fileTree);
@@ -578,7 +571,7 @@ function App() {
       console.error("Error retrieving files:", err);
       setFiles([]);
     }
-  }, [account, API_BASE_URL]);
+  }, [account, API_BASE_URL, emptyFolders]);
 
   // derive the tree whenever files change
   // useEffect(() => {
@@ -590,6 +583,77 @@ function App() {
       retrieveFiles();
     }
   }, [account, retrieveFiles]);
+
+  // Persist emptyFolders to localStorage whenever it changes
+  useEffect(() => {
+    if (account && emptyFolders.size > 0) {
+      try {
+        localStorage.setItem(
+          `emptyFolders_${account}`,
+          JSON.stringify(Array.from(emptyFolders))
+        );
+      } catch (e) {
+        console.error("Failed to save emptyFolders to localStorage:", e);
+      }
+    } else if (account && emptyFolders.size === 0) {
+      // Clear localStorage if no empty folders
+      try {
+        localStorage.removeItem(`emptyFolders_${account}`);
+      } catch (e) {
+        console.error("Failed to clear emptyFolders from localStorage:", e);
+      }
+    }
+  }, [emptyFolders, account]);
+
+  // Load emptyFolders from localStorage when account changes
+  useEffect(() => {
+    if (account) {
+      try {
+        const stored = localStorage.getItem(`emptyFolders_${account}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setEmptyFolders(new Set(parsed));
+        } else {
+          setEmptyFolders(new Set());
+        }
+      } catch (e) {
+        console.error("Failed to load emptyFolders from localStorage:", e);
+        setEmptyFolders(new Set());
+      }
+    } else {
+      setEmptyFolders(new Set());
+    }
+  }, [account]);
+
+  // Remove folders from emptyFolders when files are added to them
+  useEffect(() => {
+    if (files.length > 0 && emptyFolders.size > 0) {
+      setEmptyFolders(prev => {
+        const updated = new Set(prev);
+        let changed = false;
+
+        // For each file, check if its folder path is in emptyFolders
+        files.forEach(file => {
+          const folderPath = file.folder_path === "/" ? "/" : file.folder_path;
+          
+          // Remove the exact folder path and all parent paths from emptyFolders
+          // (since they now contain files)
+          const parts = folderPath.split("/").filter(Boolean);
+          let currentPath = "";
+          
+          for (const part of parts) {
+            currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
+            if (updated.has(currentPath)) {
+              updated.delete(currentPath);
+              changed = true;
+            }
+          }
+        });
+
+        return changed ? updated : prev;
+      });
+    }
+  }, [files]);
 
   function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
     const fullPath = `${parentPath}/${node.name}`;
@@ -629,7 +693,32 @@ function App() {
     const cleanName = newFolderName.trim();
     setUploadMode("folder");
 
+    // Calculate full path of new folder
+    const fullPath = currentPath === "/"
+      ? `/${cleanName}`
+      : `${currentPath}/${cleanName}`;
+
+    // Add to empty folders set
+    setEmptyFolders(prev => {
+      const updated = new Set(prev);
+      updated.add(fullPath);
+      return updated;
+    });
+
     setFileTree((prevTree) => {
+      if (!prevTree) {
+        // If no tree exists, create root
+        const root = { name: "/", type: "folder", children: [] };
+        if (currentPath === "/") {
+          root.children.push({
+            name: cleanName,
+            type: "folder",
+            children: [],
+          });
+        }
+        return root;
+      }
+
       const newTree = structuredClone(prevTree); // safe deep copy
 
       // Navigate to the correct node based on currentPath
@@ -647,12 +736,19 @@ function App() {
         if (!node) return prevTree; // safety: don't crash
       }
 
-      // Create the new folder (ONLY FRONTEND)
-      node.children.push({
-        name: cleanName,
-        type: "folder",
-        children: [],
-      });
+      // Check if folder already exists
+      const folderExists = node.children.some(
+        c => c.type === "folder" && c.name === cleanName
+      );
+
+      if (!folderExists) {
+        // Create the new folder (ONLY FRONTEND)
+        node.children.push({
+          name: cleanName,
+          type: "folder",
+          children: [],
+        });
+      }
 
       return newTree;
     });
