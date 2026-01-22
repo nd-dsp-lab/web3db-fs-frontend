@@ -11,9 +11,9 @@ const CHANGE_OWNER = 1 << 6
 const CHANGE_ROLE = 1 << 7
 
 function App() {
-  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH THIS BACK BEFORE PUSHING ---------
-  const API_BASE_URL = "http://localhost:8090";  // for testing
+  // const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
