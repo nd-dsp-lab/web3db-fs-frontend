@@ -1,19 +1,12 @@
 import React, { useState, useEffect, useCallback } from "react";
-
-// Bitmasks for permissions
-const READ = 1 << 0
-const WRITE = 1 << 1
-const DOWNLOAD = 1 << 2
-const DELETE = 1 << 3
-const SHARE = 1 << 4
-const MOVE = 1 << 5
-const CHANGE_OWNER = 1 << 6
-const CHANGE_ROLE = 1 << 7
+import AppLayout from "./components/AppLayout";
+import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE } from "./utils/permissions"
+import { buildFileTree, getFolderContents, ensureSepolia, toHexifNumber, normalizeTxFields } from "./utils/helpers"
 
 function App() {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
-  // ------ REMEMBER TO SWITCH THIS BACK BEFORE PUSHING ---------
-  // const API_BASE_URL = "http://localhost:8090";  // for testing
+  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  // ------ REMEMBER TO SWITCH BACK TO ABOVE URL BEFORE PUSHING TO DEVELOP ---------
+  const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
@@ -39,145 +32,6 @@ function App() {
     } else {
       alert("MetaMask not detected. Please install it!");
     }
-  }
-
-  // Helper function to merge empty folders into the tree structure
-  function mergeEmptyFoldersIntoTree(tree, emptyFoldersSet) {
-    if (!emptyFoldersSet || emptyFoldersSet.size === 0) {
-      return tree;
-    }
-
-    // For each empty folder path, ensure it exists in the tree
-    emptyFoldersSet.forEach(folderPath => {
-      // Skip root
-      if (folderPath === "/" || !folderPath) return;
-
-      // Parse path: "/documents/projects" -> ["documents", "projects"]
-      const parts = folderPath.split("/").filter(Boolean);
-      if (parts.length === 0) return;
-
-      let currentNode = tree;
-
-      // Navigate/create folder structure
-      for (const part of parts) {
-        let folderNode = currentNode.children.find(
-          c => c.type === "folder" && c.name === part
-        );
-
-        // Create folder if it doesn't exist
-        if (!folderNode) {
-          folderNode = { name: part, type: "folder", children: [] };
-          currentNode.children.push(folderNode);
-        }
-
-        currentNode = folderNode;
-      }
-    });
-
-    return tree;
-  }
-
-  // Build a tree from files array and merge empty folders
-  function buildFileTree(files, emptyFoldersSet = new Set()) {
-    const root = { name: "/", type: "folder", children: [] };
-
-    // Build tree from files
-    for (const file of files) {
-      const path = file.folder_path || "/";
-      // Clean the path: remove leading/trailing slashes, then split and filter
-      const cleanPath = path.replace(/^\/+|\/+$/g, '');
-      const parts = cleanPath ? cleanPath.split("/").filter(Boolean) : [];
-
-      // 1) File is in root -> no folder parts needed
-      if (parts.length === 0) {
-        root.children.push({
-          ...file,
-          type: "file",
-          name: file.filename,
-        });
-        continue;
-      }
-
-      // 2) File is inside subfolders - navigate/create the folder structure
-      let currentNode = root;
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-
-        // Look for existing folder node
-        let folderNode = currentNode.children.find(
-          (c) => c.type === "folder" && c.name === part
-        );
-        if (!folderNode) {
-          folderNode = { name: part, type: "folder", children: [] };
-          currentNode.children.push(folderNode);
-        }
-        currentNode = folderNode;
-      }
-
-      // After navigating through all folders, add the file
-      currentNode.children.push({
-        ...file,
-        type: "file",
-        name: file.filename,
-      });
-    }
-
-    // Merge empty folders into the tree
-    return mergeEmptyFoldersIntoTree(root, emptyFoldersSet);
-  }
-
-  // Get folder contents (files + subfolders)
-  function getFolderContents(tree, path) {
-    if (!tree) return [];
-
-    if (path === "/" || path === "") {
-      return tree.children;
-    }
-
-    const parts = path.split("/").filter(Boolean);
-    let node = tree;
-    for (const part of parts) {
-      node = node?.children.find((c) => c.type === "folder" && c.name === part);
-      if (!node) return [];
-    }
-
-    return node.children || [];
-  }
-
-  async function ensureSepolia() {
-    const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
-
-    try {
-      const currentChainId = await window.ethereum.request({ method: "eth_chainId" });
-      if (currentChainId !== SEPOLIA_CHAIN_ID) {
-        try {
-          // try to switch to sepolia
-          await window.ethereum.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: SEPOLIA_CHAIN_ID }],
-          });
-          console.log("Swithched to Sepolia");
-        } catch (switchError) {
-          // sepolia isn't added to metamask
-          console.error("Cannot find Sepolia in wallet", switchError);
-          // ADD CODE TO TRY AND ADD SEPOLIA TO METAMASK HERE
-        }
-      } else {
-        console.log("Already on Sepolia");
-      }
-    } catch (err) {
-      console.error("Couldn't ensure Sepolia network:", err);
-    }
-  }
-
-  // need to be able to convert numeric txn fields to hex for MetaMask
-  function toHexifNumber(input) {
-    if (input === undefined || input === null) return input;
-    if (typeof input === "string" && input.startsWith("0x")) return input;
-    const n = typeof input === "number" ? input : parseInt(input.toString(), 10);
-    if (Number.isNaN(n)) return input;
-    return "0x" + n.toString(16);
   }
 
   // Functionality for preparing and sending shared transactions
@@ -210,12 +64,7 @@ function App() {
       await ensureSepolia();
 
       // Ensure all transaction fields are properly formatted
-      const fields = { ...txn };
-      fields.gas = toHexifNumber(fields.gas);
-      fields.gasPrice = toHexifNumber(fields.gasPrice);
-      fields.nonce = toHexifNumber(fields.nonce);
-      fields.value = toHexifNumber(fields.value) || '0x0';
-      fields.chainId = toHexifNumber(fields.chainId);
+      const fields = normalizeTxFields(txn);
 
       // Get user approval
       const txHash = await window.ethereum.request({
@@ -416,19 +265,7 @@ function App() {
     try {
       await ensureSepolia();
 
-      const transaction = {
-        ...data.transaction,
-        gas: data.transaction.gas
-          ? `0x${data.transaction.gas.toString(16)}`
-          : data.transaction.gas,
-        gasPrice: data.transaction.gasPrice
-          ? `0x${data.transaction.gasPrice.toString(16)}`
-          : data.transaction.gasPrice,
-        nonce: data.transaction.nonce
-          ? `0x${data.transaction.nonce.toString(16)}`
-          : data.transaction.nonce,
-        value: data.transaction.value || "0x0",
-      };
+      const transaction = normalizeTxFields(data.transaction);
 
       const txHash = await window.ethereum.request({
         method: "eth_sendTransaction",
@@ -655,37 +492,7 @@ function App() {
     }
   }, [files]);
 
-  function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
-    const fullPath = `${parentPath}/${node.name}`;
-    return (
-      <div style={{ marginLeft: "10px" }}>
-        <div
-          onClick={() => setCurrentPath(fullPath)}
-          style={{
-            padding: "4px 6px",
-            border: "1px solid #ddd",
-            borderRadius: "4px",
-            background: currentPath === fullPath ? "#f0f0f0" : "#fff",
-            cursor: "pointer",
-            marginBottom: "2px",
-          }}
-        >
-          {node.name}
-        </div>
-        {node.children
-          .filter((c) => c.type === "folder")
-          .map((child) => (
-            <FolderNode
-              key={child.name}
-              node={child}
-              parentPath={fullPath}
-              currentPath={currentPath}
-              setCurrentPath={setCurrentPath}
-            />
-          ))}
-      </div>
-    );
-  }
+  // Presentational components are moved to AppLayout
 
   function handleCreateFolder() {
     if (!newFolderName.trim()) return;
@@ -757,257 +564,23 @@ function App() {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        minHeight: "100vh",
-        padding: "40px 20px",
-        backgroundColor: "#fafafa",
-      }}
-    >
-      <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
-
-      <button onClick={connectWallet} style={{ marginBottom: "20px" }}>
-        <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
-      </button>
-
-      <div style={{ width: "100%", maxWidth: "1000px" }}>
-
-        {fileTree ? (
-          <div
-            style={{
-              display: "flex",
-              gap: "30px",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              textAlign: "left",
-              marginTop: "10px",
-            }}
-          >
-            {/* LEFT PANEL — Folders */}
-            <div>
-              <h3>Folders</h3>
-              <div
-                onClick={() => setCurrentPath("/")}
-                style={{
-                  padding: "6px 8px",
-                  border: "1px solid #ddd",
-                  borderRadius: "4px",
-                  background: currentPath === "/" ? "#f0f0f0" : "#fff",
-                  cursor: "pointer",
-                  marginBottom: "5px",
-                }}
-              >
-                /
-              </div>
-
-              {fileTree.children
-                .filter((c) => c.type === "folder")
-                .map((folder) => (
-                  <FolderNode
-                    key={folder.name}
-                    node={folder}
-                    parentPath=""
-                    currentPath={currentPath}
-                    setCurrentPath={setCurrentPath}
-                  />
-                ))}
-            </div>
-
-            {/* RIGHT COLUMN — Files */}
-            <div style={{ flex: "1", minHeight: "400px" }}>
-              <h3>Files in {currentPath}</h3>
-              {getFolderContents(fileTree, currentPath)
-                .filter((item) => item.type === "file")
-                .map((file, index) => {
-
-                  let sharedList = file.shared_with
-                  if (!Array.isArray(sharedList)) sharedList = [];
-                  if (sharedList.length > 0 && typeof sharedList[0] === "object") {
-                    sharedList = sharedList.map(s => s.address || s.to || s.owner || JSON.stringify(s));
-                  }
-                  const hasShared = Array.isArray(sharedList) && sharedList.length > 0;
-
-                  return (
-                    <div
-                      key={index}
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        borderRadius: "6px",
-                        padding: "10px",
-                        marginBottom: "10px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div>
-                        <strong>{file.name}</strong>
-                        <div style={{ fontSize: "0.85em", color: "#666" }}>
-                          CID: {file.cid}
-                        </div>
-                        {hasShared && (
-                          <div style={{ fontSize: "0.8em", color: "#444", marginTop: "6px" }}>
-                            Shared with: {sharedList.join(", ")}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Button container */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "flex-end" }}>
-                        {/* Top row: Download + Share */}
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-
-                          {/* DOWNLOAD — only if user has DOWNLOAD permission */}
-                          {(file.permissions & DOWNLOAD) !== 0 && (
-                            <a
-                              href={`${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`}
-                              download={file.filename}
-                              style={{
-                                color: "#0066cc",
-                                textDecoration: "none",
-                                border: "1px solid #0066cc",
-                                borderRadius: "4px",
-                                padding: "4px 8px",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Download
-                            </a>
-                          )}
-
-                          {/* SHARE — only if user is owner */}
-                          {file.is_owner && (
-                            <button
-                              onClick={async () => {
-                                const to = window.prompt("Enter recipient Ethereum address (0x...)");
-                                if (!to) return;
-                                await handleShare(file.cid, to);
-                              }}
-                              style={{
-                                background: "#00a86b",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Share
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Bottom row: Unshare + Delete */}
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-
-                          {/* UNSHARE — only if shared_with is non-empty AND user is owner */}
-                          {file.is_owner && hasShared && (
-                            <button
-                              onClick={async () => {
-                                let addrToUnshare = null;
-                                if (sharedList.length === 1) {
-                                  const ok = window.confirm(`Unshare file "${file.filename}" with ${sharedList[0]}?`);
-                                  if (!ok) return;
-                                  addrToUnshare = sharedList[0];
-                                } else {
-                                  const listText = sharedList.join(", ");
-                                  const promptMsg = `File "${file.filename}" is shared with: ${listText}\n\nEnter the address to unshare:`;
-                                  const chosen = window.prompt(promptMsg);
-                                  if (!chosen) return;
-                                  addrToUnshare = chosen.trim();
-                                }
-                                await handleUnshare(file.cid, addrToUnshare);
-                              }}
-                              style={{
-                                background: "#ff9800",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Unshare
-                            </button>
-                          )}
-
-                          {/* DELETE — only if owner */}
-                          {file.is_owner && (
-                            <button
-                              onClick={async () => {
-                                const ok = window.confirm(`Delete file "${file.filename}" (CID: ${file.cid})?`);
-                                if (!ok) return;
-                                await handleDelete(file.cid);
-                              }}
-                              style={{
-                                background: "#d9534f",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        ) : (
-          <p>No files found.</p>
-        )}
-      </div>
-
-      {/* Upload form centered below everything */}
-      <form onSubmit={uploadFile} style={{ marginTop: "30px", textAlign: "center" }}>
-        {/* Single file upload */}
-        <div style={{ marginBottom: "10px" }}>
-          <input
-            id="singleFileInput"
-            type="file"
-            style={{ marginRight: "10px" }}
-            onChange={(e) => setUploadMode("single")}
-          />
-          <button type="submit">Upload File</button>
-        </div>
-
-        {/* Folder upload */}
-        <div style={{ marginBottom: "10px" }}>
-          <input
-            id="folderInput"
-            type="file"
-            webkitdirectory="true"
-            directory=""
-            multiple
-            style={{ marginRight: "10px" }}
-            onChange={(e) => setUploadMode("folder")}
-          />
-          <button type="submit">Upload Folder</button>
-        </div>
-
-        <div className="create-folder" style={{ marginBottom: "10px" }}>
-          <input
-            value={newFolderName}
-            style={{ marginRight: "100px" }}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="New folder name"
-          />
-          <button onClick={handleCreateFolder}>Create Folder</button>
-        </div>
-      </form>
-    </div>
+    <AppLayout
+      account={account}
+      connectWallet={connectWallet}
+      fileTree={fileTree}
+      currentPath={currentPath}
+      setCurrentPath={setCurrentPath}
+      getFolderContents={getFolderContents}
+      API_BASE_URL={API_BASE_URL}
+      uploadFile={uploadFile}
+      setUploadMode={setUploadMode}
+      newFolderName={newFolderName}
+      setNewFolderName={setNewFolderName}
+      handleCreateFolder={handleCreateFolder}
+      handleShare={handleShare}
+      handleUnshare={handleUnshare}
+      handleDelete={handleDelete}
+    />
   );
 }
 
