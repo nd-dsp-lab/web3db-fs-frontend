@@ -4,9 +4,9 @@ import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE }
 import { buildFileTree, getFolderContents, ensureSepolia, toHexifNumber, normalizeTxFields } from "./utils/helpers"
 
 function App() {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH BACK TO ABOVE URL BEFORE PUSHING TO DEVELOP ---------
-  // const API_BASE_URL = "http://localhost:8090";  // for testing
+  const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
@@ -384,14 +384,37 @@ function App() {
       const filesWithShared = await Promise.all(
         filesList.map(async (file) => {
           try {
-            const response = await fetch(`${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`);
+            const params = new URLSearchParams({
+              cid: file.cid,
+              user_address: account,
+            });
+            const response = await fetch(
+              `${API_BASE_URL}/shared-users?${params.toString()}`,
+              {
+                headers: {
+                  "ngrok-skip-browser-warning": "true",
+                },
+              }
+            );
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const shared_data = await response.json();
+            const sharedData = await response.json();
+            console.log("sharedData for CID", file.cid, sharedData);
+            const sharedWith = Array.isArray(sharedData.shared_with) ? sharedData.shared_with : [];
+            const sharedBy =
+              sharedData.shared_by ||
+              sharedData.owner ||
+              file.owner_address ||
+              file.owner ||
+              null;
 
-            return { ...file, shared_with: Array.isArray(shared_data.shared_with) ? shared_data.shared_with : [] };
+            return { ...file, shared_with: sharedWith, shared_by: sharedBy };
           } catch (err) {
             console.error("Error fetching shared-with for CID", file.cid, err);
-            return { ...file, shared_with: [] };
+            return {
+              ...file,
+              shared_with: [],
+              shared_by: file.owner_address || file.owner || null,
+            };
           }
         })
       );

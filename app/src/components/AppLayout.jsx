@@ -50,6 +50,31 @@ export default function AppLayout({
   handleUnshare,
   handleDelete,
 }) {
+  const downloadFile = async (file) => {
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(
+          file.filename
+        )}?user_address=${encodeURIComponent(account)}`,
+        { headers: { "ngrok-skip-browser-warning": "true" } }
+      );
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message || "Download failed");
+    }
+  };
+
   return (
     <div
       style={{
@@ -124,6 +149,12 @@ export default function AppLayout({
                     );
                   }
                   const hasShared = Array.isArray(sharedList) && sharedList.length > 0;
+                  const ownerAddress =
+                    file.shared_by ||
+                    file.owner_address ||
+                    file.owner ||
+                    file.ownerAddress ||
+                    file.ownerAccount;
 
                   return (
                     <div
@@ -143,11 +174,18 @@ export default function AppLayout({
                         <div style={{ fontSize: "0.85em", color: "#666" }}>
                           CID: {file.cid}
                         </div>
-                        {hasShared && (
+                        {hasShared && file.is_owner && (
                           <div
                             style={{ fontSize: "0.8em", color: "#444", marginTop: "6px" }}
                           >
                             Shared with: {sharedList.join(", ")}
+                          </div>
+                        )}
+                        {!file.is_owner && ownerAddress && (
+                          <div
+                            style={{ fontSize: "0.8em", color: "#444", marginTop: "6px" }}
+                          >
+                            Shared by: {ownerAddress}
                           </div>
                         )}
                       </div>
@@ -165,22 +203,20 @@ export default function AppLayout({
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                           {/* DOWNLOAD — only if user has DOWNLOAD permission */}
                           {(file.permissions & DOWNLOAD) !== 0 && (
-                            <a
-                              href={`${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(
-                                file.filename
-                              )}`}
-                              download={file.filename}
+                            <button
+                              onClick={() => downloadFile(file)}
                               style={{
                                 color: "#0066cc",
-                                textDecoration: "none",
+                                background: "#fff",
                                 border: "1px solid #0066cc",
                                 borderRadius: "4px",
                                 padding: "4px 8px",
                                 fontSize: "0.85em",
+                                cursor: "pointer",
                               }}
                             >
                               Download
-                            </a>
+                            </button>
                           )}
 
                           {/* SHARE — only if user is owner */}
