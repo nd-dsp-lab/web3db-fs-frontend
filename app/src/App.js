@@ -4,9 +4,9 @@ import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE }
 import { buildFileTree, getFolderContents, ensureSepolia, toHexifNumber, normalizeTxFields } from "./utils/helpers"
 
 function App() {
-  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH BACK TO ABOVE URL BEFORE PUSHING TO DEVELOP ---------
-  const API_BASE_URL = "http://localhost:8090";  // for testing
+  // const API_BASE_URL = "http://localhost:8090";  // for testing
 
   const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
