@@ -1,14 +1,17 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "./components/AppLayout";
-import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE } from "./utils/permissions"
+// import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE } from "./utils/permissions"
 import { buildFileTree, getFolderContents, ensureSepolia, toHexifNumber, normalizeTxFields } from "./utils/helpers"
 
 function App() {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  // const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   // ------ REMEMBER TO SWITCH BACK TO ABOVE URL BEFORE PUSHING TO DEVELOP ---------
-  // const API_BASE_URL = "http://localhost:8090";  // for testing
+  const API_BASE_URL = "http://localhost:8090";  // for testing
 
+  // account has ref and state to re-render and for synchronization
   const [account, setAccount] = useState(null);
+  const walletConnected = useRef(0);
+
   const [files, setFiles] = useState([]);
   const [fileTree, setFileTree] = useState(null);
   const [currentPath, setCurrentPath] = useState("/");
@@ -25,6 +28,7 @@ function App() {
         const accounts = await window.ethereum.request({
           method: "eth_requestAccounts",
         });
+        walletConnected.current = 1;
         setAccount(accounts[0]);
       } catch (err) {
         console.error("User rejected request:", err);
@@ -32,6 +36,19 @@ function App() {
     } else {
       alert("MetaMask not detected. Please install it!");
     }
+  }
+  
+  function disconnectWallet() {
+    // reset everything when disconnection
+    walletConnected.current = 0;
+    setAccount(null);
+    setFiles([]);
+    setFileTree(null);
+    setCurrentPath("/");
+    setFolderPath("/");
+    setUploadMode("single");
+    setNewFolderName("");
+    console.log("Disconnected");
   }
 
   // Functionality for preparing and sending shared transactions
@@ -369,7 +386,10 @@ function App() {
 
   // retrieveFiles
   const retrieveFiles = useCallback(async () => {
-    if (!account) return;
+    if (!account) {
+      setFiles([]);
+      setFileTree(null);
+    };
     try {
       const response = await fetch(`${API_BASE_URL}/?user_address=${account}`, {
         headers: {
@@ -396,12 +416,17 @@ function App() {
         })
       );
 
-      setFiles(filesWithShared || []);
+      // Logic to check if Ref of wallet should currently be connected; if not reset everything to nothing
+      if (walletConnected.current === 0) {
+        setFiles([]);
+        setFileTree(null);
+        return;
+      };
 
+      setFiles(filesWithShared || []);
       // Pass emptyFolders to buildFileTree to preserve empty folders
       const fileTree = buildFileTree(filesWithShared, emptyFolders);
       console.log("Built file tree:", fileTree);
-
       setFileTree(fileTree);
 
     } catch (err) {
@@ -567,6 +592,7 @@ function App() {
     <AppLayout
       account={account}
       connectWallet={connectWallet}
+      disconnectWallet={disconnectWallet}
       fileTree={fileTree}
       currentPath={currentPath}
       setCurrentPath={setCurrentPath}
