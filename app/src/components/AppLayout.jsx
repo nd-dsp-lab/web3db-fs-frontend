@@ -36,6 +36,7 @@ function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
 export default function AppLayout({
   account,
   connectWallet,
+  disconnectWallet,
   fileTree,
   currentPath,
   setCurrentPath,
@@ -88,10 +89,17 @@ export default function AppLayout({
       }}
     >
       <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
+      <div>
 
+      
       <button onClick={connectWallet} style={{ marginBottom: "20px" }}>
         <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
       </button>
+      
+      {account ?<button onClick={disconnectWallet}>
+        <p>Disconnect Wallet</p>
+      </button> : null}
+      </div>
 
       <div style={{ width: "100%", maxWidth: "1000px" }}>
         {fileTree ? (
