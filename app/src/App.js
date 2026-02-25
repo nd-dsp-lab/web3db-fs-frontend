@@ -22,8 +22,18 @@ function App() {
   // Track empty folders (folders with no files) to persist them across retrieveFiles calls
   const [emptyFolders, setEmptyFolders] = useState(new Set());
 
-  async function connectWallet() {
+  async function connectWallet(walletType) {
     if (window.ethereum) {
+      let walletProvider = null;
+      if (walletType === "MetaMask") {
+        walletProvider = window.ethereum?.isMetaMask ? window.ethereum : null;
+      } else if (walletType === "Coinbase") {
+        walletProvider =  window.ethereum?.isCoinbaseWallet ? window.ethereum : null;
+      }
+      if (walletProvider === null) {
+        console.log("Provider not connected")
+        return;
+      }
       try {
         const accounts = await window.ethereum.request({
           method: "eth_requestAccounts",

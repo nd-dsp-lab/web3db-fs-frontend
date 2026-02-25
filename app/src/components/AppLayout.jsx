@@ -91,14 +91,27 @@ export default function AppLayout({
       <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
       <div>
 
-      
-      <button onClick={connectWallet} style={{ marginBottom: "20px" }}>
-        <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
-      </button>
-      
-      {account ?<button onClick={disconnectWallet}>
-        <p>Disconnect Wallet</p>
-      </button> : null}
+      { account ? 
+        <>
+          <button style={{ margin: "20px" }}>  
+            <p>
+              {`Connected: ${account}`}
+            </p>
+          </button>
+          <button onClick={disconnectWallet} style={{ margin: "20px" }}>
+            <p>Disconnect Wallet</p>
+          </button>
+        </>
+        :
+        <>
+          <button onClick={()=>connectWallet("MetaMask")} style={{ margin: "20px" }}>
+            <p>Connect MetaMask</p>
+          </button>
+          <button onClick={()=>connectWallet("Coinbase")} style={{ margin: "20px" }}>
+            <p>Connect Coinbase</p>
+          </button>
+        </>
+      }
       </div>
 
       <div style={{ width: "100%", maxWidth: "1000px" }}>
