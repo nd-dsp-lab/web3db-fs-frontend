@@ -11,6 +11,7 @@ function App() {
   // account has ref and state to re-render and for synchronization
   const [account, setAccount] = useState(null);
   const walletConnected = useRef(0);
+  const walletTypeRef = useRef(null); // can be set to "MetaMask", "Coinbase", or null
 
   const [files, setFiles] = useState([]);
   const [fileTree, setFileTree] = useState(null);
@@ -22,45 +23,39 @@ function App() {
   // Track empty folders (folders with no files) to persist them across retrieveFiles calls
   const [emptyFolders, setEmptyFolders] = useState(new Set());
 
-  async function connectWallet(walletType) {
-    if (window.ethereum) {
-      const providers = window.ethereum?.providers || [window.ethereum];
-    
-      let selectedProvider = null;
-      console.log("Hi")
-      if (walletType === "MetaMask") {
-        selectedProvider = providers.find(p => p.isMetaMask && !p.isBraveWallet);
-      } else if (walletType === "Coinbase") {
-        selectedProvider = providers.find(p => p.isCoinbaseWallet) || window.coinbaseWalletExtension;
-      }
-      console.log("Bye")
-      console.log(selectedProvider)
+  const getWalletProvider = () => {
+    const providers = window?.ethereum?.providers || [window.ethereum];
+    console.log(providers)
+    if (walletTypeRef.current === "MetaMask") {
+      return providers.find(p => p.isMetaMask && !p.isBraveWallet);
+    } else if (walletTypeRef.current === "Coinbase") {
+      return providers.find(p => p.isCoinbaseWallet) || window.coinbaseWalletExtension;
+    }
+  };
 
-      if (!selectedProvider) {
-        alert(`${walletType} not detected!`);
-        return;
-      }
-      if (selectedProvider === null) {
-        console.log("Provider not connected")
-        return;
-      }
-      try {
-        const accounts = await selectedProvider.request({
-          method: "eth_requestAccounts",
-        });
-        walletConnected.current = 1;
-        setAccount(accounts[0]);
-      } catch (err) {
-        console.error("User rejected request:", err);
-      }
-    } else {
-      alert("Wallet not detected. Please install it!");
+  async function connectWallet(walletType) {
+    walletTypeRef.current = walletType;
+    let selectedProvider = getWalletProvider();
+
+    if (!selectedProvider) {
+      alert(`${walletType} not detected!`);
+      return;
+    }
+    try {
+      const accounts = await selectedProvider.request({
+        method: "eth_requestAccounts",
+      });
+      walletConnected.current = 1;
+      setAccount(accounts[0]);
+    } catch (err) {
+      console.error("User rejected request:", err);
     }
   }
   
   function disconnectWallet() {
     // reset everything when disconnection
     walletConnected.current = 0;
+    walletTypeRef.current = null;
     setAccount(null);
     setFiles([]);
     setFileTree(null);
@@ -102,9 +97,11 @@ function App() {
 
       // Ensure all transaction fields are properly formatted
       const fields = normalizeTxFields(txn);
-
+      
+      let selectedProvider = getWalletProvider();
       // Get user approval
-      const txHash = await window.ethereum.request({
+      console.log(selectedProvider);
+      const txHash = await selectedProvider.request({
         method: 'eth_sendTransaction',
         params: [fields],
       });
@@ -174,7 +171,8 @@ function App() {
       fields.chainId = toHexifNumber(fields.chainId);
 
       // Get user approval
-      const txHash = await window.ethereum.request({
+      let selectedProvider = getWalletProvider();
+      const txHash = await selectedProvider.request({
         method: 'eth_sendTransaction',
         params: [fields],
       });
@@ -304,7 +302,8 @@ function App() {
 
       const transaction = normalizeTxFields(data.transaction);
 
-      const txHash = await window.ethereum.request({
+      let selectedProvider = getWalletProvider();
+      const txHash = await selectedProvider.request({
         method: "eth_sendTransaction",
         params: [transaction],
       });
@@ -373,7 +372,8 @@ function App() {
       fields.value = toHexifNumber(fields.value) || '0x0';
       fields.chainId = toHexifNumber(fields.chainId);
 
-      const txHash = await window.ethereum.request({
+      let selectedProvider = getWalletProvider();
+      const txHash = await selectedProvider.request({
         method: 'eth_sendTransaction',
         params: [fields],
       });
