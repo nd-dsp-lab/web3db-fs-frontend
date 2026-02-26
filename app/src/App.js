@@ -24,18 +24,28 @@ function App() {
 
   async function connectWallet(walletType) {
     if (window.ethereum) {
-      let walletProvider = null;
+      const providers = window.ethereum?.providers || [window.ethereum];
+    
+      let selectedProvider = null;
+      console.log("Hi")
       if (walletType === "MetaMask") {
-        walletProvider = window.ethereum?.isMetaMask ? window.ethereum : null;
+        selectedProvider = providers.find(p => p.isMetaMask && !p.isBraveWallet);
       } else if (walletType === "Coinbase") {
-        walletProvider =  window.ethereum?.isCoinbaseWallet ? window.ethereum : null;
+        selectedProvider = providers.find(p => p.isCoinbaseWallet) || window.coinbaseWalletExtension;
       }
-      if (walletProvider === null) {
+      console.log("Bye")
+      console.log(selectedProvider)
+
+      if (!selectedProvider) {
+        alert(`${walletType} not detected!`);
+        return;
+      }
+      if (selectedProvider === null) {
         console.log("Provider not connected")
         return;
       }
       try {
-        const accounts = await window.ethereum.request({
+        const accounts = await selectedProvider.request({
           method: "eth_requestAccounts",
         });
         walletConnected.current = 1;
@@ -44,7 +54,7 @@ function App() {
         console.error("User rejected request:", err);
       }
     } else {
-      alert("MetaMask not detected. Please install it!");
+      alert("Wallet not detected. Please install it!");
     }
   }
   
