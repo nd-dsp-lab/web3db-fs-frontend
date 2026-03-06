@@ -1,5 +1,6 @@
-import React from "react";
-import { DOWNLOAD } from "../utils/permissions"
+import React, { useState, useCallback } from "react";
+import { DOWNLOAD } from "../utils/permissions";
+import FileContextMenu from "./FileContextMenu";
 
 function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
   const fullPath = `${parentPath}/${node.name}`;
@@ -49,7 +50,17 @@ export default function AppLayout({
   handleShare,
   handleUnshare,
   handleDelete,
+  handleMove
 }) {
+  const [contextMenu, setContextMenu] = useState(null);
+
+  const openContextMenu = useCallback((e, file) => {
+    e.preventDefault();
+    setContextMenu({x: e.clientX, y: e.clientY, file});
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
   const downloadFile = async (file) => {
     if (!account) {
       alert("Connect wallet first");
@@ -138,6 +149,9 @@ export default function AppLayout({
             {/* RIGHT COLUMN — Files */}
             <div style={{ flex: "1", minHeight: "400px" }}>
               <h3>Files in {currentPath}</h3>
+              <p style={{ fontSize: "0.8em", color: "#999", marginTop: "-8px", marginBottom: "12px" }}>
+                Right-click a file for options
+              </p>
               {getFolderContents(fileTree, currentPath)
                 .filter((item) => item.type === "file")
                 .map((file, index) => {
@@ -156,17 +170,22 @@ export default function AppLayout({
                     file.ownerAddress ||
                     file.ownerAccount;
 
+                  const isSelected = contextMenu?.file?.cid === file.cid;
                   return (
                     <div
                       key={index}
+                      onContextMenu={(e) => openContextMenu(e, file)}
                       style={{
-                        border: "1px solid #e0e0e0",
+                        border: `1px solid ${isSelected ? "#aac4f5" : "#e0e0e0"}`,
                         borderRadius: "6px",
                         padding: "10px",
                         marginBottom: "10px",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        background: isSelected ? "#f0f5ff" : "#fff",
+                        cursor: "context-menu",
+                        userSelect: "none",
                       }}
                     >
                       <div>
@@ -189,125 +208,12 @@ export default function AppLayout({
                           </div>
                         )}
                       </div>
-
-                      {/* Button container */}
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                          alignItems: "flex-end",
-                        }}
-                      >
-                        {/* Top row: Download + Share */}
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          {/* DOWNLOAD — only if user has DOWNLOAD permission */}
-                          {(file.permissions & DOWNLOAD) !== 0 && (
-                            <button
-                              onClick={() => downloadFile(file)}
-                              style={{
-                                color: "#0066cc",
-                                background: "#fff",
-                                border: "1px solid #0066cc",
-                                borderRadius: "4px",
-                                padding: "4px 8px",
-                                fontSize: "0.85em",
-                                cursor: "pointer",
-                              }}
-                            >
-                              Download
-                            </button>
-                          )}
-
-                          {/* SHARE — only if user is owner */}
-                          {file.is_owner && (
-                            <button
-                              onClick={async () => {
-                                const to = window.prompt(
-                                  "Enter recipient Ethereum address (0x...)"
-                                );
-                                if (!to) return;
-                                await handleShare(file.cid, to);
-                              }}
-                              style={{
-                                background: "#00a86b",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Share
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Bottom row: Unshare + Delete */}
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          {/* UNSHARE — only if shared_with is non-empty AND user is owner */}
-                          {file.is_owner && hasShared && (
-                            <button
-                              onClick={async () => {
-                                let addrToUnshare = null;
-                                if (sharedList.length === 1) {
-                                  const ok = window.confirm(
-                                    `Unshare file "${file.filename}" with ${sharedList[0]}?`
-                                  );
-                                  if (!ok) return;
-                                  addrToUnshare = sharedList[0];
-                                } else {
-                                  const listText = sharedList.join(", ");
-                                  const promptMsg = `File "${file.filename}" is shared with: ${listText}\n\nEnter the address to unshare:`;
-                                  const chosen = window.prompt(promptMsg);
-                                  if (!chosen) return;
-                                  addrToUnshare = chosen.trim();
-                                }
-                                await handleUnshare(file.cid, addrToUnshare);
-                              }}
-                              style={{
-                                background: "#ff9800",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Unshare
-                            </button>
-                          )}
-
-                          {/* DELETE — only if owner */}
-                          {file.is_owner && (
-                            <button
-                              onClick={async () => {
-                                const ok = window.confirm(
-                                  `Delete file "${file.filename}" (CID: ${file.cid})?`
-                                );
-                                if (!ok) return;
-                                await handleDelete(file.cid);
-                              }}
-                              style={{
-                                background: "#d9534f",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                    <div style={{ color: "#ccc", fontSize: "1.2em", paddingRight: "4px" }}>
+                       ⋮
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -352,6 +258,21 @@ export default function AppLayout({
           <button onClick={handleCreateFolder}>Create Folder</button>
         </div>
       </form>
-    </div>
+      {contextMenu && (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          file={contextMenu.file}
+          fileTree={fileTree}
+          currentPath={currentPath}
+          onClose={closeContextMenu}
+          onDownload={downloadFile}
+          onShare={handleShare}
+          onUnshare={handleUnshare}
+          onDelete={handleDelete}
+          onMove={handleMove}
+        />
+      )}
+    </div> 
   );
 }

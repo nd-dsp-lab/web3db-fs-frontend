@@ -372,6 +372,64 @@ function App() {
     }
   }
 
+  // move file to a new folder
+  async function handleMove(cid, newPath) {
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+
+    let txHash;
+
+    try {
+      console.log("Move payload:", { cid, new_path: newPath, user_address: account });
+      const response = await fetch(`${API_BASE_URL}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid, new_path: newPath, user_address: account }),
+      });
+
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Move prepare failed", data);
+        alert("Failed to prepare move transaction");
+        return;
+      }
+
+      await ensureSepolia();
+      const fields = normalizeTxFields(data.transaction);
+
+      txHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [fields],
+      });
+
+      alert(`Move transaction sent: ${txHash}. Waiting for confirmation...`);
+
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      const verifyData = await verify.json()
+
+      if (verifyData.success) {
+        alert("File moved successfully!")
+        retrieveFiles();
+      } else {
+        console.error("Move tx verification failed", verifyData);
+        alert("Move transaction failed");
+      }
+    } catch (err) {
+      console.error("Move error", err);
+      if (err?.code === 4001) {
+        alert("Transaction rejected by user");
+      } else {
+        alert("Move failed " + (err?.message || err?.reason || err.toString()));
+      }
+    }
+  }
+
   // retrieveFiles
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
@@ -608,6 +666,7 @@ function App() {
       handleShare={handleShare}
       handleUnshare={handleUnshare}
       handleDelete={handleDelete}
+      handleMove={handleMove}
     />
   );
 }
