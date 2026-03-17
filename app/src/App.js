@@ -342,6 +342,102 @@ function App() {
       }
     }
   }
+  
+ async function handleDeleteFolder(){
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+    if (!currentPath || currentPath === "/") {
+      alert("Please navigate into a folder to delete it.");
+      return;
+    }
+    try {
+      const payload = { 
+        folder_path: currentPath.startsWith("/") ? currentPath.substring(1) : currentPath, 
+        user_address: account, 
+        cids: [],
+      };
+      console.log("Sending Payload:", payload);
+
+      const response = await fetch(`${API_BASE_URL}/delete-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 422) {
+        const errorBody = await response.json();
+        console.error("FastAPI Validation Error:", errorBody);
+        alert("Backend rejected request format. Check the console.");
+        return;
+      }
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      if (!data.transaction) {
+        console.error("No on-chain files. Cleaning up local empty folder record. ", data);
+        setEmptyFolders(prev => {
+          const updated = new Set(prev);
+          updated.delete(currentPath)
+          return updated;
+        });
+        retrieveFiles(); // Refresh the tree
+        alert("Folder removed.");
+        return;
+      }
+      const txn = data.transaction;
+      await ensureSepolia();
+
+      const fields = { 
+        from: txn.from,
+        to: txn.to,
+        data: txn.data,
+        gas: toHexifNumber(txn.gas),
+        nonce: toHexifNumber(txn.nonce),
+        value: toHexifNumber(txn.value) || '0x0',
+        chainId: toHexifNumber(txn.chainId),
+      };
+
+      if (txn.maxFeePerGas) {
+        fields.maxFeePerGas = toHexifNumber(txn.maxFeePerGas);
+        fields.maxPriorityFeePerGas = toHexifNumber(txn.maxPriorityFeePerGas);
+      } else if (txn.gasPrice) {
+        fields.gasPrice = toHexifNumber(txn.gasPrice);
+      }
+
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [fields],
+      });
+
+      alert(`Delete folder transaction sent: ${txHash}. Waiting for confirmation...`);
+
+      // asking backend to wait for receipt and unpin (verified)
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      const verifyData = await verify.json();
+      if (verifyData.success) {
+        setEmptyFolders(prev => {
+          const updated = new Set(prev);
+          updated.delete(currentPath);
+          return updated;
+        });
+        alert("Delete successful. Content cleared");
+        setCurrentPath("/")
+        retrieveFiles();
+      } else {
+        console.error("Delete tx verification failed", verifyData);
+        alert("Delete folder failed");
+      }
+    } catch (err) {
+      console.error("Delete error object", err);
+      alert("Delete failed: " + (err?.message || err?.reason || err.toString()));
+    }
+  }
 
   async function handleDelete(cid) {
     if (!account) {
@@ -353,7 +449,7 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cid, user_address: account }),
+        body: JSON.stringify({ cid, user_address: account}),
       });
       const data = await response.json();
       if (!data.transaction) {
@@ -649,6 +745,7 @@ function App() {
       handleShare={handleShare}
       handleUnshare={handleUnshare}
       handleDelete={handleDelete}
+      handleDeleteFolder={handleDeleteFolder}
     />
   );
 }

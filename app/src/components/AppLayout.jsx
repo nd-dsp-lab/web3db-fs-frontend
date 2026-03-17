@@ -50,6 +50,7 @@ export default function AppLayout({
   handleShare,
   handleUnshare,
   handleDelete,
+  handleDeleteFolder,
 }) {
   const downloadFile = async (file) => {
     if (!account) {
@@ -362,7 +363,7 @@ export default function AppLayout({
           />
           <button type="submit">Upload Folder</button>
         </div>
-
+        
         <div className="create-folder" style={{ marginBottom: "10px" }}>
           <input
             value={newFolderName}
@@ -371,6 +372,20 @@ export default function AppLayout({
             placeholder="New folder name"
           />
           <button onClick={handleCreateFolder}>Create Folder</button>
+        </div>
+        {/*Folder deletion*/ }
+        <div className="delete-folder" style={{ marginBottom: "5px" }}>
+          <button 
+            type="button" 
+            onClick={async (e) => {
+              e.preventDefault(); // This stops the 'upload' from firing
+              const ok = window.confirm(`Delete current folder "${currentPath}"? This will delete all files inside.`);
+              if (!ok) return;
+              await handleDeleteFolder(currentPath);
+            }}
+          >
+            Delete Current Folder
+          </button>
         </div>
       </form>
     </div>
