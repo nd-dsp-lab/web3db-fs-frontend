@@ -2,17 +2,51 @@ import React, { useState, useCallback } from "react";
 import { DOWNLOAD } from "../utils/permissions";
 import FileContextMenu from "./FileContextMenu";
 
-function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
+function FolderNode({
+  node,
+  parentPath,
+  currentPath,
+  setCurrentPath,
+  dragOverPath,
+  setDragOverPath,
+  onFolderDrop,
+}) {
   const fullPath = `${parentPath}/${node.name}`;
+  const isDragOver = dragOverPath === fullPath;
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOverPath(fullPath);
+  };
+
+  const handleDragLeave = () => {
+    if (dragOverPath === fullPath) {
+      setDragOverPath(null);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOverPath(null);
+    onFolderDrop(fullPath);
+  };
+
   return (
     <div style={{ marginLeft: "10px" }}>
       <div
         onClick={() => setCurrentPath(fullPath)}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
           padding: "4px 6px",
-          border: "1px solid #ddd",
+          border: `1px solid ${isDragOver ? "#4a90e2" : "#ddd"}`,
           borderRadius: "4px",
-          background: currentPath === fullPath ? "#f0f0f0" : "#fff",
+          background: isDragOver
+            ? "#eaf3ff"
+            : currentPath === fullPath
+            ? "#f0f0f0"
+            : "#fff",
           cursor: "pointer",
           marginBottom: "2px",
         }}
@@ -28,6 +62,9 @@ function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
             parentPath={fullPath}
             currentPath={currentPath}
             setCurrentPath={setCurrentPath}
+            dragOverPath={dragOverPath}
+            setDragOverPath={setDragOverPath}
+            onFolderDrop={onFolderDrop}
           />
         ))}
     </div>
@@ -53,6 +90,8 @@ export default function AppLayout({
   handleMove
 }) {
   const [contextMenu, setContextMenu] = useState(null);
+  const [draggedFile, setDraggedFile] = useState(null);
+  const [dragOverPath, setDragOverPath] = useState(null);
 
   const openContextMenu = useCallback((e, file) => {
     e.preventDefault();
@@ -60,6 +99,42 @@ export default function AppLayout({
   }, []);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const onFileDragStart = useCallback((file) => {
+    const filename = file.filename || file.name;
+    if (!filename || !file.cid) return;
+    setDraggedFile({ cid: file.cid, filename, fromPath: currentPath });
+  }, [currentPath]);
+
+  const onFileDragEnd = useCallback(() => {
+    setDraggedFile(null);
+    setDragOverPath(null);
+  }, []);
+
+  const onFolderDrop = useCallback(async (targetPath) => {
+    if (!draggedFile?.cid || !draggedFile?.filename) return;
+
+    const normalizedTargetPath = targetPath || "/";
+    const nextPath =
+      normalizedTargetPath === "/"
+        ? `/${draggedFile.filename}`
+        : `${normalizedTargetPath}/${draggedFile.filename}`;
+
+    const currentFilePath =
+      draggedFile.fromPath === "/"
+        ? `/${draggedFile.filename}`
+        : `${draggedFile.fromPath}/${draggedFile.filename}`;
+
+    if (nextPath === currentFilePath) {
+      setDraggedFile(null);
+      setDragOverPath(null);
+      return;
+    }
+
+    await handleMove(draggedFile.cid, nextPath);
+    setDraggedFile(null);
+    setDragOverPath(null);
+  }, [draggedFile, handleMove]);
 
   const downloadFile = async (file) => {
     if (!account) {
@@ -121,11 +196,28 @@ export default function AppLayout({
               <h3>Folders</h3>
               <div
                 onClick={() => setCurrentPath("/")}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverPath("/");
+                }}
+                onDragLeave={() => {
+                  if (dragOverPath === "/") setDragOverPath(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverPath(null);
+                  onFolderDrop("/");
+                }}
                 style={{
                   padding: "6px 8px",
-                  border: "1px solid #ddd",
+                  border: `1px solid ${dragOverPath === "/" ? "#4a90e2" : "#ddd"}`,
                   borderRadius: "4px",
-                  background: currentPath === "/" ? "#f0f0f0" : "#fff",
+                  background:
+                    dragOverPath === "/"
+                      ? "#eaf3ff"
+                      : currentPath === "/"
+                      ? "#f0f0f0"
+                      : "#fff",
                   cursor: "pointer",
                   marginBottom: "5px",
                 }}
@@ -142,6 +234,9 @@ export default function AppLayout({
                     parentPath=""
                     currentPath={currentPath}
                     setCurrentPath={setCurrentPath}
+                    dragOverPath={dragOverPath}
+                    setDragOverPath={setDragOverPath}
+                    onFolderDrop={onFolderDrop}
                   />
                 ))}
             </div>
@@ -175,6 +270,9 @@ export default function AppLayout({
                     <div
                       key={index}
                       onContextMenu={(e) => openContextMenu(e, file)}
+                      draggable={true}
+                      onDragStart={() => onFileDragStart(file)}
+                      onDragEnd={onFileDragEnd}
                       style={{
                         border: `1px solid ${isSelected ? "#aac4f5" : "#e0e0e0"}`,
                         borderRadius: "6px",
@@ -186,6 +284,7 @@ export default function AppLayout({
                         background: isSelected ? "#f0f5ff" : "#fff",
                         cursor: "context-menu",
                         userSelect: "none",
+                        opacity: draggedFile?.cid === file.cid ? 0.6 : 1,
                       }}
                     >
                       <div>
