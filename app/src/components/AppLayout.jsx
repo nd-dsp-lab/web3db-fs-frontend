@@ -1,17 +1,52 @@
-import React from "react";
-import { DOWNLOAD } from "../utils/permissions"
+import React, { useState, useCallback } from "react";
+import { DOWNLOAD } from "../utils/permissions";
+import FileContextMenu from "./FileContextMenu";
 
-function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
+function FolderNode({
+  node,
+  parentPath,
+  currentPath,
+  setCurrentPath,
+  dragOverPath,
+  setDragOverPath,
+  onFolderDrop,
+}) {
   const fullPath = `${parentPath}/${node.name}`;
+  const isDragOver = dragOverPath === fullPath;
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOverPath(fullPath);
+  };
+
+  const handleDragLeave = () => {
+    if (dragOverPath === fullPath) {
+      setDragOverPath(null);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOverPath(null);
+    onFolderDrop(fullPath);
+  };
+
   return (
     <div style={{ marginLeft: "10px" }}>
       <div
         onClick={() => setCurrentPath(fullPath)}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
           padding: "4px 6px",
-          border: "1px solid #ddd",
+          border: `1px solid ${isDragOver ? "#4a90e2" : "#ddd"}`,
           borderRadius: "4px",
-          background: currentPath === fullPath ? "#f0f0f0" : "#fff",
+          background: isDragOver
+            ? "#eaf3ff"
+            : currentPath === fullPath
+            ? "#f0f0f0"
+            : "#fff",
           cursor: "pointer",
           marginBottom: "2px",
         }}
@@ -27,6 +62,9 @@ function FolderNode({ node, parentPath, currentPath, setCurrentPath }) {
             parentPath={fullPath}
             currentPath={currentPath}
             setCurrentPath={setCurrentPath}
+            dragOverPath={dragOverPath}
+            setDragOverPath={setDragOverPath}
+            onFolderDrop={onFolderDrop}
           />
         ))}
     </div>
@@ -50,8 +88,56 @@ export default function AppLayout({
   handleShare,
   handleUnshare,
   handleDelete,
+  handleMove
   handleDeleteFolder,
 }) {
+  const [contextMenu, setContextMenu] = useState(null);
+  const [draggedFile, setDraggedFile] = useState(null);
+  const [dragOverPath, setDragOverPath] = useState(null);
+
+  const openContextMenu = useCallback((e, file) => {
+    e.preventDefault();
+    setContextMenu({x: e.clientX, y: e.clientY, file});
+  }, []);
+
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+  const onFileDragStart = useCallback((file) => {
+    const filename = file.filename || file.name;
+    if (!filename || !file.cid) return;
+    setDraggedFile({ cid: file.cid, filename, fromPath: currentPath });
+  }, [currentPath]);
+
+  const onFileDragEnd = useCallback(() => {
+    setDraggedFile(null);
+    setDragOverPath(null);
+  }, []);
+
+  const onFolderDrop = useCallback(async (targetPath) => {
+    if (!draggedFile?.cid || !draggedFile?.filename) return;
+
+    const normalizedTargetPath = targetPath || "/";
+    const nextPath =
+      normalizedTargetPath === "/"
+        ? `/${draggedFile.filename}`
+        : `${normalizedTargetPath}/${draggedFile.filename}`;
+
+    const currentFilePath =
+      draggedFile.fromPath === "/"
+        ? `/${draggedFile.filename}`
+        : `${draggedFile.fromPath}/${draggedFile.filename}`;
+
+    if (nextPath === currentFilePath) {
+      setDraggedFile(null);
+      setDragOverPath(null);
+      return;
+    }
+
+    await handleMove(draggedFile.cid, nextPath);
+    setDraggedFile(null);
+    setDragOverPath(null);
+  }, [draggedFile, handleMove]);
+
   const downloadFile = async (file) => {
     if (!account) {
       alert("Connect wallet first");
@@ -132,11 +218,28 @@ export default function AppLayout({
               <h3>Folders</h3>
               <div
                 onClick={() => setCurrentPath("/")}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverPath("/");
+                }}
+                onDragLeave={() => {
+                  if (dragOverPath === "/") setDragOverPath(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverPath(null);
+                  onFolderDrop("/");
+                }}
                 style={{
                   padding: "6px 8px",
-                  border: "1px solid #ddd",
+                  border: `1px solid ${dragOverPath === "/" ? "#4a90e2" : "#ddd"}`,
                   borderRadius: "4px",
-                  background: currentPath === "/" ? "#f0f0f0" : "#fff",
+                  background:
+                    dragOverPath === "/"
+                      ? "#eaf3ff"
+                      : currentPath === "/"
+                      ? "#f0f0f0"
+                      : "#fff",
                   cursor: "pointer",
                   marginBottom: "5px",
                 }}
@@ -153,6 +256,9 @@ export default function AppLayout({
                     parentPath=""
                     currentPath={currentPath}
                     setCurrentPath={setCurrentPath}
+                    dragOverPath={dragOverPath}
+                    setDragOverPath={setDragOverPath}
+                    onFolderDrop={onFolderDrop}
                   />
                 ))}
             </div>
@@ -160,6 +266,9 @@ export default function AppLayout({
             {/* RIGHT COLUMN — Files */}
             <div style={{ flex: "1", minHeight: "400px" }}>
               <h3>Files in {currentPath}</h3>
+              <p style={{ fontSize: "0.8em", color: "#999", marginTop: "-8px", marginBottom: "12px" }}>
+                Right-click a file for options
+              </p>
               {getFolderContents(fileTree, currentPath)
                 .filter((item) => item.type === "file")
                 .map((file, index) => {
@@ -178,17 +287,26 @@ export default function AppLayout({
                     file.ownerAddress ||
                     file.ownerAccount;
 
+                  const isSelected = contextMenu?.file?.cid === file.cid;
                   return (
                     <div
                       key={index}
+                      onContextMenu={(e) => openContextMenu(e, file)}
+                      draggable={true}
+                      onDragStart={() => onFileDragStart(file)}
+                      onDragEnd={onFileDragEnd}
                       style={{
-                        border: "1px solid #e0e0e0",
+                        border: `1px solid ${isSelected ? "#aac4f5" : "#e0e0e0"}`,
                         borderRadius: "6px",
                         padding: "10px",
                         marginBottom: "10px",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        background: isSelected ? "#f0f5ff" : "#fff",
+                        cursor: "context-menu",
+                        userSelect: "none",
+                        opacity: draggedFile?.cid === file.cid ? 0.6 : 1,
                       }}
                     >
                       <div>
@@ -211,125 +329,12 @@ export default function AppLayout({
                           </div>
                         )}
                       </div>
-
-                      {/* Button container */}
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                          alignItems: "flex-end",
-                        }}
-                      >
-                        {/* Top row: Download + Share */}
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          {/* DOWNLOAD — only if user has DOWNLOAD permission */}
-                          {(file.permissions & DOWNLOAD) !== 0 && (
-                            <button
-                              onClick={() => downloadFile(file)}
-                              style={{
-                                color: "#0066cc",
-                                background: "#fff",
-                                border: "1px solid #0066cc",
-                                borderRadius: "4px",
-                                padding: "4px 8px",
-                                fontSize: "0.85em",
-                                cursor: "pointer",
-                              }}
-                            >
-                              Download
-                            </button>
-                          )}
-
-                          {/* SHARE — only if user is owner */}
-                          {file.is_owner && (
-                            <button
-                              onClick={async () => {
-                                const to = window.prompt(
-                                  "Enter recipient Ethereum address (0x...)"
-                                );
-                                if (!to) return;
-                                await handleShare(file.cid, to);
-                              }}
-                              style={{
-                                background: "#00a86b",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Share
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Bottom row: Unshare + Delete */}
-                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                          {/* UNSHARE — only if shared_with is non-empty AND user is owner */}
-                          {file.is_owner && hasShared && (
-                            <button
-                              onClick={async () => {
-                                let addrToUnshare = null;
-                                if (sharedList.length === 1) {
-                                  const ok = window.confirm(
-                                    `Unshare file "${file.filename}" with ${sharedList[0]}?`
-                                  );
-                                  if (!ok) return;
-                                  addrToUnshare = sharedList[0];
-                                } else {
-                                  const listText = sharedList.join(", ");
-                                  const promptMsg = `File "${file.filename}" is shared with: ${listText}\n\nEnter the address to unshare:`;
-                                  const chosen = window.prompt(promptMsg);
-                                  if (!chosen) return;
-                                  addrToUnshare = chosen.trim();
-                                }
-                                await handleUnshare(file.cid, addrToUnshare);
-                              }}
-                              style={{
-                                background: "#ff9800",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Unshare
-                            </button>
-                          )}
-
-                          {/* DELETE — only if owner */}
-                          {file.is_owner && (
-                            <button
-                              onClick={async () => {
-                                const ok = window.confirm(
-                                  `Delete file "${file.filename}" (CID: ${file.cid})?`
-                                );
-                                if (!ok) return;
-                                await handleDelete(file.cid);
-                              }}
-                              style={{
-                                background: "#d9534f",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "4px",
-                                padding: "6px 10px",
-                                cursor: "pointer",
-                                fontSize: "0.85em",
-                              }}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </div>
-                      </div>
+                    <div style={{ color: "#ccc", fontSize: "1.2em", paddingRight: "4px" }}>
+                       ⋮
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -388,6 +393,21 @@ export default function AppLayout({
           </button>
         </div>
       </form>
-    </div>
+      {contextMenu && (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          file={contextMenu.file}
+          fileTree={fileTree}
+          currentPath={currentPath}
+          onClose={closeContextMenu}
+          onDownload={downloadFile}
+          onShare={handleShare}
+          onUnshare={handleUnshare}
+          onDelete={handleDelete}
+          onMove={handleMove}
+        />
+      )}
+    </div> 
   );
 }
