@@ -74,6 +74,7 @@ function FolderNode({
 export default function AppLayout({
   account,
   connectWallet,
+  disconnectWallet,
   fileTree,
   currentPath,
   setCurrentPath,
@@ -88,6 +89,7 @@ export default function AppLayout({
   handleUnshare,
   handleDelete,
   handleMove
+  handleDeleteFolder,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
   const [draggedFile, setDraggedFile] = useState(null);
@@ -174,10 +176,30 @@ export default function AppLayout({
       }}
     >
       <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
+      <div>
 
-      <button onClick={connectWallet} style={{ marginBottom: "20px" }}>
-        <p>{account ? `Connected: ${account}` : "Connect MetaMask"}</p>
-      </button>
+      { account ? 
+        <>
+          <button style={{ margin: "20px" }}>  
+            <p>
+              {`Connected: ${account}`}
+            </p>
+          </button>
+          <button onClick={disconnectWallet} style={{ margin: "20px" }}>
+            <p>Disconnect Wallet</p>
+          </button>
+        </>
+        :
+        <>
+          <button onClick={()=>connectWallet("MetaMask")} style={{ margin: "20px" }}>
+            <p>Connect MetaMask</p>
+          </button>
+          <button onClick={()=>connectWallet("Coinbase")} style={{ margin: "20px" }}>
+            <p>Connect Coinbase</p>
+          </button>
+        </>
+      }
+      </div>
 
       <div style={{ width: "100%", maxWidth: "1000px" }}>
         {fileTree ? (
@@ -346,7 +368,7 @@ export default function AppLayout({
           />
           <button type="submit">Upload Folder</button>
         </div>
-
+        
         <div className="create-folder" style={{ marginBottom: "10px" }}>
           <input
             value={newFolderName}
@@ -355,6 +377,20 @@ export default function AppLayout({
             placeholder="New folder name"
           />
           <button onClick={handleCreateFolder}>Create Folder</button>
+        </div>
+        {/*Folder deletion*/ }
+        <div className="delete-folder" style={{ marginBottom: "5px" }}>
+          <button 
+            type="button" 
+            onClick={async (e) => {
+              e.preventDefault(); // This stops the 'upload' from firing
+              const ok = window.confirm(`Delete current folder "${currentPath}"? This will delete all files inside.`);
+              if (!ok) return;
+              await handleDeleteFolder(currentPath);
+            }}
+          >
+            Delete Current Folder
+          </button>
         </div>
       </form>
       {contextMenu && (

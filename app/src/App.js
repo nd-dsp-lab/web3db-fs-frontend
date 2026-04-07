@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import AppLayout from "./components/AppLayout";
-import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE } from "./utils/permissions"
+// import { READ, WRITE, DOWNLOAD, DELETE, SHARE, MOVE, CHANGE_OWNER, CHANGE_ROLE } from "./utils/permissions"
 import { buildFileTree, getFolderContents, ensureSepolia, toHexifNumber, normalizeTxFields } from "./utils/helpers"
 
 function App() {
@@ -8,7 +8,11 @@ function App() {
   // ------ REMEMBER TO SWITCH BACK TO ABOVE URL BEFORE PUSHING TO DEVELOP ---------
   const API_BASE_URL = "http://localhost:8090";  // for testing
 
+  // account has ref and state to re-render and for synchronization
   const [account, setAccount] = useState(null);
+  const walletConnected = useRef(0);
+  const walletTypeRef = useRef(null); // can be set to "MetaMask", "Coinbase", or null
+
   const [files, setFiles] = useState([]);
   const [fileTree, setFileTree] = useState(null);
   const [currentPath, setCurrentPath] = useState("/");
@@ -19,19 +23,47 @@ function App() {
   // Track empty folders (folders with no files) to persist them across retrieveFiles calls
   const [emptyFolders, setEmptyFolders] = useState(new Set());
 
-  async function connectWallet() {
-    if (window.ethereum) {
-      try {
-        const accounts = await window.ethereum.request({
-          method: "eth_requestAccounts",
-        });
-        setAccount(accounts[0]);
-      } catch (err) {
-        console.error("User rejected request:", err);
-      }
-    } else {
-      alert("MetaMask not detected. Please install it!");
+  const getWalletProvider = () => {
+    const providers = window?.ethereum?.providers || [window.ethereum];
+    console.log(providers)
+    if (walletTypeRef.current === "MetaMask") {
+      return providers.find(p => p.isMetaMask && !p.isBraveWallet);
+    } else if (walletTypeRef.current === "Coinbase") {
+      return providers.find(p => p.isCoinbaseWallet) || window.coinbaseWalletExtension;
     }
+  };
+
+  async function connectWallet(walletType) {
+    walletTypeRef.current = walletType;
+    let selectedProvider = getWalletProvider();
+
+    if (!selectedProvider) {
+      alert(`${walletType} not detected!`);
+      return;
+    }
+    try {
+      const accounts = await selectedProvider.request({
+        method: "eth_requestAccounts",
+      });
+      walletConnected.current = 1;
+      setAccount(accounts[0]);
+    } catch (err) {
+      console.error("User rejected request:", err);
+    }
+  }
+  
+  function disconnectWallet() {
+    // reset everything when disconnection
+    walletConnected.current = 0;
+    walletTypeRef.current = null;
+    setAccount(null);
+    setFiles([]);
+    setFileTree(null);
+    setCurrentPath("/");
+    setFolderPath("/");
+    setUploadMode("single");
+    setNewFolderName("");
+    console.log("Disconnected");
   }
 
   // Functionality for preparing and sending shared transactions
@@ -65,9 +97,11 @@ function App() {
 
       // Ensure all transaction fields are properly formatted
       const fields = normalizeTxFields(txn);
-
+      
+      let selectedProvider = getWalletProvider();
       // Get user approval
-      const txHash = await window.ethereum.request({
+      console.log(selectedProvider);
+      const txHash = await selectedProvider.request({
         method: 'eth_sendTransaction',
         params: [fields],
       });
@@ -137,7 +171,8 @@ function App() {
       fields.chainId = toHexifNumber(fields.chainId);
 
       // Get user approval
-      const txHash = await window.ethereum.request({
+      let selectedProvider = getWalletProvider();
+      const txHash = await selectedProvider.request({
         method: 'eth_sendTransaction',
         params: [fields],
       });
@@ -272,7 +307,8 @@ function App() {
 
       const transaction = normalizeTxFields(data.transaction);
 
-      const txHash = await window.ethereum.request({
+      let selectedProvider = getWalletProvider();
+      const txHash = await selectedProvider.request({
         method: "eth_sendTransaction",
         params: [transaction],
       });
@@ -311,6 +347,102 @@ function App() {
       }
     }
   }
+  
+ async function handleDeleteFolder(){
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+    if (!currentPath || currentPath === "/") {
+      alert("Please navigate into a folder to delete it.");
+      return;
+    }
+    try {
+      const payload = { 
+        folder_path: currentPath.startsWith("/") ? currentPath.substring(1) : currentPath, 
+        user_address: account, 
+        cids: [],
+      };
+      console.log("Sending Payload:", payload);
+
+      const response = await fetch(`${API_BASE_URL}/delete-folder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (response.status === 422) {
+        const errorBody = await response.json();
+        console.error("FastAPI Validation Error:", errorBody);
+        alert("Backend rejected request format. Check the console.");
+        return;
+      }
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      if (!data.transaction) {
+        console.error("No on-chain files. Cleaning up local empty folder record. ", data);
+        setEmptyFolders(prev => {
+          const updated = new Set(prev);
+          updated.delete(currentPath)
+          return updated;
+        });
+        retrieveFiles(); // Refresh the tree
+        alert("Folder removed.");
+        return;
+      }
+      const txn = data.transaction;
+      await ensureSepolia();
+
+      const fields = { 
+        from: txn.from,
+        to: txn.to,
+        data: txn.data,
+        gas: toHexifNumber(txn.gas),
+        nonce: toHexifNumber(txn.nonce),
+        value: toHexifNumber(txn.value) || '0x0',
+        chainId: toHexifNumber(txn.chainId),
+      };
+
+      if (txn.maxFeePerGas) {
+        fields.maxFeePerGas = toHexifNumber(txn.maxFeePerGas);
+        fields.maxPriorityFeePerGas = toHexifNumber(txn.maxPriorityFeePerGas);
+      } else if (txn.gasPrice) {
+        fields.gasPrice = toHexifNumber(txn.gasPrice);
+      }
+
+      const txHash = await window.ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [fields],
+      });
+
+      alert(`Delete folder transaction sent: ${txHash}. Waiting for confirmation...`);
+
+      // asking backend to wait for receipt and unpin (verified)
+      const verify = await fetch(`${API_BASE_URL}/verify-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tx_hash: txHash }),
+      });
+      const verifyData = await verify.json();
+      if (verifyData.success) {
+        setEmptyFolders(prev => {
+          const updated = new Set(prev);
+          updated.delete(currentPath);
+          return updated;
+        });
+        alert("Delete successful. Content cleared");
+        setCurrentPath("/")
+        retrieveFiles();
+      } else {
+        console.error("Delete tx verification failed", verifyData);
+        alert("Delete folder failed");
+      }
+    } catch (err) {
+      console.error("Delete error object", err);
+      alert("Delete failed: " + (err?.message || err?.reason || err.toString()));
+    }
+  }
 
   async function handleDelete(cid) {
     if (!account) {
@@ -322,7 +454,7 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cid, user_address: account }),
+        body: JSON.stringify({ cid, user_address: account}),
       });
       const data = await response.json();
       if (!data.transaction) {
@@ -341,7 +473,8 @@ function App() {
       fields.value = toHexifNumber(fields.value) || '0x0';
       fields.chainId = toHexifNumber(fields.chainId);
 
-      const txHash = await window.ethereum.request({
+      let selectedProvider = getWalletProvider();
+      const txHash = await selectedProvider.request({
         method: 'eth_sendTransaction',
         params: [fields],
       });
@@ -432,7 +565,10 @@ function App() {
 
   // retrieveFiles
   const retrieveFiles = useCallback(async () => {
-    if (!account) return;
+    if (!account) {
+      setFiles([]);
+      setFileTree(null);
+    };
     try {
       const response = await fetch(`${API_BASE_URL}/?user_address=${account}`, {
         headers: {
@@ -482,12 +618,17 @@ function App() {
         })
       );
 
-      setFiles(filesWithShared || []);
+      // Logic to check if Ref of wallet should currently be connected; if not reset everything to nothing
+      if (walletConnected.current === 0) {
+        setFiles([]);
+        setFileTree(null);
+        return;
+      };
 
+      setFiles(filesWithShared || []);
       // Pass emptyFolders to buildFileTree to preserve empty folders
       const fileTree = buildFileTree(filesWithShared, emptyFolders);
       console.log("Built file tree:", fileTree);
-
       setFileTree(fileTree);
 
     } catch (err) {
@@ -653,6 +794,7 @@ function App() {
     <AppLayout
       account={account}
       connectWallet={connectWallet}
+      disconnectWallet={disconnectWallet}
       fileTree={fileTree}
       currentPath={currentPath}
       setCurrentPath={setCurrentPath}
@@ -667,6 +809,7 @@ function App() {
       handleUnshare={handleUnshare}
       handleDelete={handleDelete}
       handleMove={handleMove}
+      handleDeleteFolder={handleDeleteFolder}
     />
   );
 }
