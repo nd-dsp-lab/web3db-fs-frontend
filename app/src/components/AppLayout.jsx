@@ -88,8 +88,8 @@ export default function AppLayout({
   handleShare,
   handleUnshare,
   handleDelete,
-  handleMove
-  handleDeleteFolder,
+  handleMove,
+  handleDeleteFolder
 }) {
   const [contextMenu, setContextMenu] = useState(null);
   const [draggedFile, setDraggedFile] = useState(null);
