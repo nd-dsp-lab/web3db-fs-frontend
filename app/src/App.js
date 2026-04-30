@@ -3,7 +3,7 @@ import AppLayout from "./components/AppLayout";
 import { buildFileTree, getFolderContents } from "./utils/helpers";
 
 function App() {
-  // Replace with your actual backend URL if different
+  // Replace with your actual backend URL
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
 
   // --- STATE MANAGEMENT ---
@@ -14,7 +14,7 @@ function App() {
   const [view, setView] = useState("my-drive"); 
   const [searchQuery, setSearchQuery] = useState("");
   const [emptyFolders, setEmptyFolders] = useState(new Set());
-  const [uploadMode, setUploadMode] = useState("single"); // "single" or "folder"
+  const [uploadMode, setUploadMode] = useState("single");
 
   // --- WALLET FUNCTIONALITY ---
   const connectWallet = async () => {
@@ -49,7 +49,6 @@ function App() {
       const filesList = data.user_files || [];
       
       setFiles(filesList);
-      // Rebuild the visual tree whenever files or manually created empty folders change
       setFileTree(buildFileTree(filesList, emptyFolders));
     } catch (err) {
       console.error("Error retrieving files:", err);
@@ -60,12 +59,49 @@ function App() {
     if (account) retrieveFiles();
   }, [account, retrieveFiles]);
 
-  // --- DYNAMIC ITEM FILTERING (SEARCH vs NAVIGATION) ---
-  // If user is searching, filter globally across all files.
-  // Otherwise, only show items in the current folder path.
+  // --- FILE ACTIONS (MOVE & DELETE) ---
+  const handleMove = async (cid, newPath) => {
+    if (!account) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/move`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true" 
+        },
+        body: JSON.stringify({ 
+          user_address: account, 
+          cid: cid, 
+          new_path: newPath 
+        })
+      });
+      if (response.ok) {
+        retrieveFiles();
+      } else {
+        alert("Move failed. Check console for details.");
+      }
+    } catch (err) {
+      console.error("Move error:", err);
+    }
+  };
+
+  const handleDelete = async (cid) => {
+    if (!window.confirm("Are you sure you want to delete this file?")) return;
+    try {
+      await fetch(`${API_BASE_URL}/delete/${cid}?user_address=${account}`, {
+        method: "DELETE",
+        headers: { "ngrok-skip-browser-warning": "true" }
+      });
+      retrieveFiles();
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
+  };
+
+  // --- DYNAMIC ITEM FILTERING ---
   const displayItems = searchQuery.length > 0
     ? files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : (fileTree ? getFolderContents(fileTree, currentPath) : []);
+    : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
 
   // --- UPLOAD LOGIC ---
   const handleUpload = async (e) => {
@@ -76,7 +112,6 @@ function App() {
     formData.append("user_address", account);
 
     if (uploadMode === "folder") {
-      // Logic for uploading a full directory structure
       for (const file of inputFiles) {
         const relative = file.webkitRelativePath || file.name;
         const fullPath = currentPath === "/" ? `/${relative}` : `${currentPath}/${relative}`;
@@ -84,7 +119,6 @@ function App() {
         formData.append("paths", fullPath);
       }
     } else {
-      // Logic for uploading a single file to the current folder
       formData.append("file", inputFiles[0]);
       formData.append("folder_path", currentPath);
     }
@@ -98,7 +132,6 @@ function App() {
       });
 
       if (response.ok) {
-        // Reset input so same file can be re-uploaded if user chooses
         e.target.value = null; 
         retrieveFiles();
       }
@@ -113,23 +146,23 @@ function App() {
     setEmptyFolders(prev => new Set(prev).add(newPath));
   };
 
-  // --- RENDER ---
   return (
     <AppLayout 
       account={account}
       connectWallet={connectWallet}
       disconnectWallet={disconnectWallet}
-      displayItems={displayItems} // The functional data for the table
+      displayItems={displayItems}
       currentPath={currentPath}
       setCurrentPath={setCurrentPath}
       uploadFile={handleUpload}
       setUploadMode={setUploadMode}
       handleCreateFolder={handleCreateFolder}
+      handleMove={handleMove}
+      handleDelete={handleDelete}
       view={view}
       setView={setView}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
-      // System-level dark mode detection
       darkMode={window.matchMedia("(prefers-color-scheme: dark)").matches}
     />
   );
