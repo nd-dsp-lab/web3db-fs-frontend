@@ -1,413 +1,150 @@
 import React, { useState, useCallback } from "react";
-import { DOWNLOAD } from "../utils/permissions";
-import FileContextMenu from "./FileContextMenu";
-
-function FolderNode({
-  node,
-  parentPath,
-  currentPath,
-  setCurrentPath,
-  dragOverPath,
-  setDragOverPath,
-  onFolderDrop,
-}) {
-  const fullPath = `${parentPath}/${node.name}`;
-  const isDragOver = dragOverPath === fullPath;
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setDragOverPath(fullPath);
-  };
-
-  const handleDragLeave = () => {
-    if (dragOverPath === fullPath) {
-      setDragOverPath(null);
-    }
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOverPath(null);
-    onFolderDrop(fullPath);
-  };
-
-  return (
-    <div style={{ marginLeft: "10px" }}>
-      <div
-        onClick={() => setCurrentPath(fullPath)}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        style={{
-          padding: "4px 6px",
-          border: `1px solid ${isDragOver ? "#4a90e2" : "#ddd"}`,
-          borderRadius: "4px",
-          background: isDragOver
-            ? "#eaf3ff"
-            : currentPath === fullPath
-            ? "#f0f0f0"
-            : "#fff",
-          cursor: "pointer",
-          marginBottom: "2px",
-        }}
-      >
-        {node.name}
-      </div>
-      {node.children
-        .filter((c) => c.type === "folder")
-        .map((child) => (
-          <FolderNode
-            key={child.name}
-            node={child}
-            parentPath={fullPath}
-            currentPath={currentPath}
-            setCurrentPath={setCurrentPath}
-            dragOverPath={dragOverPath}
-            setDragOverPath={setDragOverPath}
-            onFolderDrop={onFolderDrop}
-          />
-        ))}
-    </div>
-  );
-}
 
 export default function AppLayout({
-  account,
-  connectWallet,
-  disconnectWallet,
-  fileTree,
-  currentPath,
-  setCurrentPath,
-  getFolderContents,
-  API_BASE_URL,
-  uploadFile,
-  setUploadMode,
-  newFolderName,
-  setNewFolderName,
-  handleCreateFolder,
-  handleShare,
-  handleUnshare,
-  handleDelete,
-  handleMove,
-  handleDeleteFolder
+  account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath, 
+  uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleMove,
+  view, setView, searchQuery, setSearchQuery, darkMode
 }) {
-  const [contextMenu, setContextMenu] = useState(null);
+  const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedFile, setDraggedFile] = useState(null);
-  const [dragOverPath, setDragOverPath] = useState(null);
 
-  const openContextMenu = useCallback((e, file) => {
+  const theme = {
+    bg: darkMode ? "#121212" : "#F7F9FC",
+    card: darkMode ? "#1E1E1E" : "white",
+    text: darkMode ? "#E8EAED" : "#3c4043",
+    border: darkMode ? "#3C4043" : "#ddd",
+    searchBg: darkMode ? "#2D2E30" : "#f1f3f4"
+  };
+
+  // --- DRAG AND DROP LOGIC ---
+  const onFileDragStart = (file) => {
+    setDraggedFile({ cid: file.cid, name: file.name, fromPath: currentPath });
+  };
+
+  const onFolderDrop = async (e, targetFolderName) => {
     e.preventDefault();
-    setContextMenu({x: e.clientX, y: e.clientY, file});
-  }, []);
-
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
-
-  const onFileDragStart = useCallback((file) => {
-    const filename = file.filename || file.name;
-    if (!filename || !file.cid) return;
-    setDraggedFile({ cid: file.cid, filename, fromPath: currentPath });
-  }, [currentPath]);
-
-  const onFileDragEnd = useCallback(() => {
+    if (!draggedFile) return;
+    
+    const targetPath = currentPath === "/" ? `/${targetFolderName}` : `${currentPath}/${targetFolderName}`;
+    const destination = `${targetPath}/${draggedFile.name}`;
+    
+    await handleMove(draggedFile.cid, destination);
     setDraggedFile(null);
-    setDragOverPath(null);
-  }, []);
+  };
 
-  const onFolderDrop = useCallback(async (targetPath) => {
-    if (!draggedFile?.cid || !draggedFile?.filename) return;
-
-    const normalizedTargetPath = targetPath || "/";
-    const nextPath =
-      normalizedTargetPath === "/"
-        ? `/${draggedFile.filename}`
-        : `${normalizedTargetPath}/${draggedFile.filename}`;
-
-    const currentFilePath =
-      draggedFile.fromPath === "/"
-        ? `/${draggedFile.filename}`
-        : `${draggedFile.fromPath}/${draggedFile.filename}`;
-
-    if (nextPath === currentFilePath) {
-      setDraggedFile(null);
-      setDragOverPath(null);
-      return;
-    }
-
-    await handleMove(draggedFile.cid, nextPath);
-    setDraggedFile(null);
-    setDragOverPath(null);
-  }, [draggedFile, handleMove]);
-
-  const downloadFile = async (file) => {
-    if (!account) {
-      alert("Connect wallet first");
-      return;
-    }
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(
-          file.filename
-        )}?user_address=${encodeURIComponent(account)}`,
-        { headers: { "ngrok-skip-browser-warning": "true" } }
-      );
-      if (!res.ok) throw new Error("Download failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.filename;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert(err.message || "Download failed");
-    }
+  const triggerUpload = (mode) => {
+    setUploadMode(mode);
+    setIsNewMenuOpen(false);
+    setTimeout(() => {
+      const id = mode === "folder" ? "folderIn" : "fileIn";
+      document.getElementById(id)?.click();
+    }, 10);
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "flex-start",
-        minHeight: "100vh",
-        padding: "40px 20px",
-        backgroundColor: "#fafafa",
-      }}
-    >
-      <h1 style={{ marginBottom: "20px" }}>Connect your Metamask wallet</h1>
-      <div>
-
-      { account ? 
-        <>
-          <button style={{ margin: "20px" }}>  
-            <p>
-              {`Connected: ${account}`}
-            </p>
-          </button>
-          <button onClick={disconnectWallet} style={{ margin: "20px" }}>
-            <p>Disconnect Wallet</p>
-          </button>
-        </>
-        :
-        <>
-          <button onClick={()=>connectWallet("MetaMask")} style={{ margin: "20px" }}>
-            <p>Connect MetaMask</p>
-          </button>
-          <button onClick={()=>connectWallet("Coinbase")} style={{ margin: "20px" }}>
-            <p>Connect Coinbase</p>
-          </button>
-        </>
-      }
-      </div>
-
-      <div style={{ width: "100%", maxWidth: "1000px" }}>
-        {fileTree ? (
-          <div
-            style={{
-              display: "flex",
-              gap: "30px",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              textAlign: "left",
-              marginTop: "10px",
-            }}
-          >
-            {/* LEFT PANEL — Folders */}
-            <div>
-              <h3>Folders</h3>
-              <div
-                onClick={() => setCurrentPath("/")}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOverPath("/");
-                }}
-                onDragLeave={() => {
-                  if (dragOverPath === "/") setDragOverPath(null);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOverPath(null);
-                  onFolderDrop("/");
-                }}
-                style={{
-                  padding: "6px 8px",
-                  border: `1px solid ${dragOverPath === "/" ? "#4a90e2" : "#ddd"}`,
-                  borderRadius: "4px",
-                  background:
-                    dragOverPath === "/"
-                      ? "#eaf3ff"
-                      : currentPath === "/"
-                      ? "#f0f0f0"
-                      : "#fff",
-                  cursor: "pointer",
-                  marginBottom: "5px",
-                }}
-              >
-                /
-              </div>
-
-              {fileTree.children
-                .filter((c) => c.type === "folder")
-                .map((folder) => (
-                  <FolderNode
-                    key={folder.name}
-                    node={folder}
-                    parentPath=""
-                    currentPath={currentPath}
-                    setCurrentPath={setCurrentPath}
-                    dragOverPath={dragOverPath}
-                    setDragOverPath={setDragOverPath}
-                    onFolderDrop={onFolderDrop}
-                  />
-                ))}
-            </div>
-
-            {/* RIGHT COLUMN — Files */}
-            <div style={{ flex: "1", minHeight: "400px" }}>
-              <h3>Files in {currentPath}</h3>
-              <p style={{ fontSize: "0.8em", color: "#999", marginTop: "-8px", marginBottom: "12px" }}>
-                Right-click a file for options
-              </p>
-              {getFolderContents(fileTree, currentPath)
-                .filter((item) => item.type === "file")
-                .map((file, index) => {
-                  let sharedList = file.shared_with;
-                  if (!Array.isArray(sharedList)) sharedList = [];
-                  if (sharedList.length > 0 && typeof sharedList[0] === "object") {
-                    sharedList = sharedList.map(
-                      (s) => s.address || s.to || s.owner || JSON.stringify(s)
-                    );
-                  }
-                  const hasShared = Array.isArray(sharedList) && sharedList.length > 0;
-                  const ownerAddress =
-                    file.shared_by ||
-                    file.owner_address ||
-                    file.owner ||
-                    file.ownerAddress ||
-                    file.ownerAccount;
-
-                  const isSelected = contextMenu?.file?.cid === file.cid;
-                  return (
-                    <div
-                      key={index}
-                      onContextMenu={(e) => openContextMenu(e, file)}
-                      draggable={true}
-                      onDragStart={() => onFileDragStart(file)}
-                      onDragEnd={onFileDragEnd}
-                      style={{
-                        border: `1px solid ${isSelected ? "#aac4f5" : "#e0e0e0"}`,
-                        borderRadius: "6px",
-                        padding: "10px",
-                        marginBottom: "10px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: isSelected ? "#f0f5ff" : "#fff",
-                        cursor: "context-menu",
-                        userSelect: "none",
-                        opacity: draggedFile?.cid === file.cid ? 0.6 : 1,
-                      }}
-                    >
-                      <div>
-                        <strong>{file.name}</strong>
-                        <div style={{ fontSize: "0.85em", color: "#666" }}>
-                          CID: {file.cid}
-                        </div>
-                        {hasShared && file.is_owner && (
-                          <div
-                            style={{ fontSize: "0.8em", color: "#444", marginTop: "6px" }}
-                          >
-                            Shared with: {sharedList.join(", ")}
-                          </div>
-                        )}
-                        {!file.is_owner && ownerAddress && (
-                          <div
-                            style={{ fontSize: "0.8em", color: "#444", marginTop: "6px" }}
-                          >
-                            Shared by: {ownerAddress}
-                          </div>
-                        )}
-                      </div>
-                    <div style={{ color: "#ccc", fontSize: "1.2em", paddingRight: "4px" }}>
-                       ⋮
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <p>No files found.</p>
-        )}
-      </div>
-
-      {/* Upload form centered below everything */}
-      <form onSubmit={uploadFile} style={{ marginTop: "30px", textAlign: "center" }}>
-        {/* Single file upload */}
-        <div style={{ marginBottom: "10px" }}>
-          <input
-            id="singleFileInput"
-            type="file"
-            style={{ marginRight: "10px" }}
-            onChange={() => setUploadMode("single")}
-          />
-          <button type="submit">Upload File</button>
+    <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: "sans-serif" }}>
+      {/* SIDEBAR */}
+      <aside style={{ width: "250px", padding: "16px" }}>
+        <div 
+          style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "30px", cursor: "pointer" }} 
+          onClick={() => { setView("my-drive"); setCurrentPath("/"); setSearchQuery(""); }}
+        >
+          <div style={{ backgroundColor: "#4285F4", color: "white", padding: "4px 8px", borderRadius: "4px", fontWeight: "bold" }}>Δ</div>
+          <span style={{ fontSize: "22px", color: theme.text }}>Drive</span>
         </div>
 
-        {/* Folder upload */}
-        <div style={{ marginBottom: "10px" }}>
-          <input
-            id="folderInput"
-            type="file"
-            webkitdirectory="true"
-            directory=""
-            multiple
-            style={{ marginRight: "10px" }}
-            onChange={() => setUploadMode("folder")}
-          />
-          <button type="submit">Upload Folder</button>
+        <div style={{ position: "relative" }}>
+          <button 
+            style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 24px", borderRadius: "24px", border: "1px solid " + theme.border, cursor: "pointer", backgroundColor: theme.card, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}
+            onClick={() => setIsNewMenuOpen(!isNewMenuOpen)}
+          >
+            <span style={{ color: "#4285F4", fontSize: "24px" }}>+</span> <span style={{color: theme.text, fontWeight: "500"}}>New</span>
+          </button>
+
+          {isNewMenuOpen && (
+            <div style={{ position: "absolute", top: "55px", left: "0", width: "180px", backgroundColor: theme.card, border: "1px solid " + theme.border, borderRadius: "8px", zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "8px 0" }}>
+              <div style={{ padding: "10px 20px", cursor: "pointer", color: theme.text }} onClick={() => { const n = prompt("Folder name"); if(n) handleCreateFolder(n); setIsNewMenuOpen(false); }}>📁 New folder</div>
+              <hr style={{ border: "0", borderTop: "1px solid " + theme.border }} />
+              <div style={{ padding: "10px 20px", cursor: "pointer", color: theme.text }} onClick={() => triggerUpload("single")}>📄 File upload</div>
+              <div style={{ padding: "10px 20px", cursor: "pointer", color: theme.text }} onClick={() => triggerUpload("folder")}>📂 Folder upload</div>
+            </div>
+          )}
         </div>
         
-        <div className="create-folder" style={{ marginBottom: "10px" }}>
-          <input
-            value={newFolderName}
-            style={{ marginRight: "100px" }}
-            onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="New folder name"
+        <nav style={{ marginTop: "20px" }}>
+            <div style={{ padding: "10px 20px", cursor: "pointer", borderRadius: "0 20px 20px 0", backgroundColor: view === "my-drive" ? "#E2EEFF" : "transparent", color: view === "my-drive" ? "#1a73e8" : theme.text, fontWeight: "500" }} onClick={() => {setView("my-drive"); setSearchQuery("");}}>🏠 My Drive</div>
+            <div style={{ padding: "10px 20px", cursor: "pointer", borderRadius: "0 20px 20px 0", backgroundColor: view === "shared" ? "#E2EEFF" : "transparent", color: view === "shared" ? "#1a73e8" : theme.text, fontWeight: "500" }} onClick={() => {setView("shared"); setSearchQuery("");}}>👥 Shared</div>
+        </nav>
+      </aside>
+
+      {/* MAIN CONTENT AREA */}
+      <main style={{ flex: 1, margin: "8px", backgroundColor: theme.card, borderRadius: "16px", border: "1px solid " + theme.border, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <header style={{ height: "64px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid " + theme.border }}>
+          <input 
+            type="text" 
+            placeholder="Search in Drive" 
+            value={searchQuery} 
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: "60%", padding: "12px 20px", borderRadius: "24px", border: "none", backgroundColor: theme.searchBg, color: theme.text, outline: "none" }}
           />
-          <button onClick={handleCreateFolder}>Create Folder</button>
-        </div>
-        {/*Folder deletion*/ }
-        <div className="delete-folder" style={{ marginBottom: "5px" }}>
-          <button 
-            type="button" 
-            onClick={async (e) => {
-              e.preventDefault(); // This stops the 'upload' from firing
-              const ok = window.confirm(`Delete current folder "${currentPath}"? This will delete all files inside.`);
-              if (!ok) return;
-              await handleDeleteFolder(currentPath);
-            }}
-          >
-            Delete Current Folder
+          <button onClick={account ? disconnectWallet : connectWallet} style={{ backgroundColor: "#1a73e8", color: "white", border: "none", padding: "10px 20px", borderRadius: "24px", cursor: "pointer", fontWeight: "500" }}>
+            {account ? `${account.slice(0,6)}...${account.slice(-4)}` : "Connect Wallet"}
           </button>
+        </header>
+
+        <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto" }}>
+          <h2 style={{ fontSize: "18px", color: theme.text, marginBottom: "20px" }}>
+            {searchQuery ? `Results for "${searchQuery}"` : currentPath === "/" ? "My Drive" : `My Drive > ${currentPath}`}
+          </h2>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ borderBottom: "1px solid " + theme.border, textAlign: "left", color: "#5f6368", fontSize: "13px" }}>
+                <th style={{ padding: "10px", fontWeight: "500" }}>Name</th>
+                <th style={{ fontWeight: "500" }}>Type</th>
+                <th style={{ textAlign: "right", fontWeight: "500", paddingRight: "20px" }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayItems && displayItems.length > 0 ? displayItems.map((item, i) => (
+                <tr 
+                  key={i} 
+                  draggable={item.type === 'file'}
+                  onDragStart={() => item.type === 'file' && onFileDragStart(item)}
+                  onDragOver={(e) => { if(item.type === 'folder') e.preventDefault(); }}
+                  onDrop={(e) => item.type === 'folder' && onFolderDrop(e, item.name)}
+                  style={{ 
+                    borderBottom: "1px solid " + theme.border, 
+                    // KEY CURSOR LOGIC HERE
+                    cursor: item.type === 'folder' ? "pointer" : "context-menu" 
+                  }} 
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = darkMode ? "#2d2e30" : "#f8f9fa"} 
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <td 
+                    style={{ padding: "12px 10px", color: theme.text, display: "flex", alignItems: "center", gap: "12px" }} 
+                    onClick={() => item.type === 'folder' && setCurrentPath(currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`)}
+                  >
+                    <span style={{ fontSize: "20px" }}>{item.type === 'folder' ? "📁" : "📄"}</span> {item.name}
+                  </td>
+                  <td style={{ fontSize: "13px", color: "#5f6368" }}>{item.type}</td>
+                  <td style={{ textAlign: "right", paddingRight: "20px" }}>
+                    <button style={{ background: "none", border: "none", color: "#5f6368", fontSize: "18px", cursor: "pointer" }}>⋮</button>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                    <td colSpan="3" style={{ textAlign: "center", padding: "40px", color: "#5f6368" }}>
+                        {searchQuery ? "No matching files found." : "Nothing to show here"}
+                    </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      </form>
-      {contextMenu && (
-        <FileContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          file={contextMenu.file}
-          fileTree={fileTree}
-          currentPath={currentPath}
-          onClose={closeContextMenu}
-          onDownload={downloadFile}
-          onShare={handleShare}
-          onUnshare={handleUnshare}
-          onDelete={handleDelete}
-          onMove={handleMove}
-        />
-      )}
-    </div> 
+      </main>
+
+      <input type="file" id="fileIn" style={{ display: "none" }} onChange={uploadFile} />
+      <input type="file" id="folderIn" webkitdirectory="true" directory="" multiple style={{ display: "none" }} onChange={uploadFile} />
+    </div>
   );
 }
