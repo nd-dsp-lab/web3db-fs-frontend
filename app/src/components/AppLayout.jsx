@@ -1,12 +1,38 @@
 import React, { useState, useCallback } from "react";
+import FileContextMenu from "./FileContextMenu";
 
 export default function AppLayout({
-  account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath, 
+  account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleMove,
+  handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedFile, setDraggedFile] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
+
+  const downloadFile = async (file) => {
+    if (!account) {
+      alert("Connect wallet first");
+      return;
+    }
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}?user_address=${encodeURIComponent(account)}`,
+        { headers: { "ngrok-skip-browser-warning": "true" } }
+      );
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.message || "Download failed");
+    }
+  };
 
   const theme = {
     bg: darkMode ? "#121212" : "#F7F9FC",
@@ -128,7 +154,12 @@ export default function AppLayout({
                   </td>
                   <td style={{ fontSize: "13px", color: "#5f6368" }}>{item.type}</td>
                   <td style={{ textAlign: "right", paddingRight: "20px" }}>
-                    <button style={{ background: "none", border: "none", color: "#5f6368", fontSize: "18px", cursor: "pointer" }}>⋮</button>
+                    {item.type === 'file' && (
+                      <button
+                        onClick={(e) => setContextMenu({ x: e.clientX, y: e.clientY, file: item })}
+                        style={{ background: "none", border: "none", color: "#5f6368", fontSize: "18px", cursor: "pointer" }}
+                      >⋮</button>
+                    )}
                   </td>
                 </tr>
               )) : (
@@ -145,6 +176,22 @@ export default function AppLayout({
 
       <input type="file" id="fileIn" style={{ display: "none" }} onChange={uploadFile} />
       <input type="file" id="folderIn" webkitdirectory="true" directory="" multiple style={{ display: "none" }} onChange={uploadFile} />
+
+      {contextMenu && (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          file={contextMenu.file}
+          fileTree={fileTree}
+          currentPath={currentPath}
+          onClose={() => setContextMenu(null)}
+          onDownload={downloadFile}
+          onShare={handleShare}
+          onUnshare={handleUnshare}
+          onDelete={handleDelete}
+          onMove={handleMove}
+        />
+      )}
     </div>
   );
 }
