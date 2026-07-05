@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
 import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } from "./utils/helpers";
 
@@ -7,36 +8,62 @@ function App() {
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
 
   // --- STATE MANAGEMENT ---
-  const [account, setAccount] = useState(null);
   const [files, setFiles] = useState([]);
   const [fileTree, setFileTree] = useState(null);
   const [currentPath, setCurrentPath] = useState("/");
-  const [view, setView] = useState("my-drive"); 
+  const [view, setView] = useState("my-drive");
   const [searchQuery, setSearchQuery] = useState("");
   const [emptyFolders, setEmptyFolders] = useState(new Set());
   const [uploadMode, setUploadMode] = useState("single");
 
-  // --- WALLET FUNCTIONALITY ---
-  const connectWallet = async () => {
-    if (!window.ethereum) {
-      alert("MetaMask not found! Please install the extension.");
-      return;
-    }
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
-      setAccount(accounts[0]);
-    } catch (err) {
-      console.error("Wallet connection failed:", err);
-    }
-  };
+  // --- WALLET FUNCTIONALITY (Privy: email / Google / external wallet) ---
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+  const wallet = wallets[0] || null; // active wallet: embedded or external
+  const account = ready && authenticated && wallet ? wallet.address : null;
 
-  const disconnectWallet = () => {
-    setAccount(null);
+  const connectWallet = () => login();
+
+  const disconnectWallet = async () => {
+    await logout();
     setFiles([]);
     setFileTree(null);
     setCurrentPath("/");
     setSearchQuery("");
   };
+
+  const getProvider = useCallback(async () => {
+    if (!wallet) throw new Error("No wallet connected");
+    return wallet.getEthereumProvider();
+  }, [wallet]);
+
+  // --- GAS DRIP for fresh embedded wallets ---
+  const fundRequested = useRef(new Set());
+  useEffect(() => {
+    if (!account || wallet?.walletClientType !== "privy") return;
+    if (fundRequested.current.has(account)) return; // once per address per session
+    fundRequested.current.add(account);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/fund-wallet`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true",
+          },
+          body: JSON.stringify({ address: account }),
+        });
+        const data = await res.json();
+        if (data.funded) {
+          console.log(`Wallet funded with ${data.amount_eth} SepETH:`, data.tx_hash);
+        } else {
+          console.log("Fund-wallet skipped:", data.reason || data.error);
+        }
+      } catch (err) {
+        console.error("Fund-wallet request failed:", err);
+      }
+    })();
+  }, [account, wallet, API_BASE_URL]);
 
   // --- DATA FETCHING ---
   const retrieveFiles = useCallback(async () => {
@@ -63,8 +90,9 @@ function App() {
   // Backend endpoints only *prepare* transactions; the user must sign and
   // broadcast via MetaMask, then the backend verifies the receipt on-chain.
   const signAndVerifyTransaction = async (transaction) => {
-    await ensureSepolia();
-    const txHash = await window.ethereum.request({
+    const provider = await getProvider();
+    await ensureSepolia(provider);
+    const txHash = await provider.request({
       method: "eth_sendTransaction",
       params: [normalizeTxFields(transaction)],
     });
@@ -230,7 +258,11 @@ function App() {
       const data = await response.json();
       if (!response.ok || !data.transaction) {
         console.error("Upload prepare failed:", data);
-        alert("Upload failed. Check console for details.");
+        if (data.reason === "file_already_exists") {
+          alert("This exact file already exists in the system (identical content). It is owned by " + data.owner);
+        } else {
+          alert("Upload failed. Check console for details.");
+        }
         return;
       }
       e.target.value = null;

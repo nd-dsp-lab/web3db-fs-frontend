@@ -114,15 +114,15 @@ export function toHexifNumber(input) {
 }
 
 // make sure we are on the sepolia testnet
-export async function ensureSepolia() {
+export async function ensureSepolia(provider = window.ethereum) {
     const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
 
     try {
-      const currentChainId = await window.ethereum.request({ method: "eth_chainId" });
+      const currentChainId = await provider.request({ method: "eth_chainId" });
       if (currentChainId !== SEPOLIA_CHAIN_ID) {
         try {
           // try to switch to sepolia
-          await window.ethereum.request({
+          await provider.request({
             method: "wallet_switchEthereumChain",
             params: [{ chainId: SEPOLIA_CHAIN_ID }],
           });
