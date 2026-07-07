@@ -17,9 +17,16 @@ function App() {
   const [uploadMode, setUploadMode] = useState("single");
 
   // --- WALLET FUNCTIONALITY (Privy: email / Google / external wallet) ---
-  const { ready, authenticated, login, logout } = usePrivy();
+  const { ready, authenticated, login, logout, user } = usePrivy();
   const { wallets } = useWallets();
-  const wallet = wallets[0] || null; // active wallet: embedded or external
+  // Pick the wallet that matches the login method: social logins (email /
+  // Google) use the Privy embedded wallet; wallet logins use the external one.
+  // useWallets() can list a previously-connected MetaMask first, so never
+  // just take wallets[0].
+  const embeddedWallet = wallets.find((w) => w.walletClientType === "privy") || null;
+  const externalWallet = wallets.find((w) => w.walletClientType !== "privy") || null;
+  const socialLogin = !!(user?.email || user?.google);
+  const wallet = socialLogin ? (embeddedWallet || externalWallet) : (externalWallet || embeddedWallet);
   const account = ready && authenticated && wallet ? wallet.address : null;
 
   const connectWallet = () => login();
