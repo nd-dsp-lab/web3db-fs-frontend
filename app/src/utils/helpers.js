@@ -143,10 +143,11 @@ export async function ensureSepolia(provider = window.ethereum) {
 // Ensure all transaction fields are properly formatted
 export function normalizeTxFields(txn) {
     const fields = { ...txn };
-    fields.gas = toHexifNumber(fields.gas);
-    fields.gasPrice = toHexifNumber(fields.gasPrice);
-    fields.nonce = toHexifNumber(fields.nonce);
+    // Numeric fields for both legacy (gasPrice) and EIP-1559
+    // (maxFeePerGas/maxPriorityFeePerGas) transactions
+    for (const key of ["gas", "gasPrice", "maxFeePerGas", "maxPriorityFeePerGas", "nonce", "chainId"]) {
+        if (fields[key] !== undefined) fields[key] = toHexifNumber(fields[key]);
+    }
     fields.value = toHexifNumber(fields.value) || '0x0';
-    fields.chainId = toHexifNumber(fields.chainId);
     return fields
 }

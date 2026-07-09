@@ -280,6 +280,41 @@ function App() {
     }
   };
 
+  const handleDeleteFolder = async (folderPath) => {
+    if (!account) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/delete-folder`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
+        body: JSON.stringify({ folder_path: folderPath, user_address: account })
+      });
+      const data = await response.json();
+      if (data.error) {
+        console.error("Delete folder prepare failed:", data);
+        alert("Delete folder failed. Check console for details.");
+        return;
+      }
+      // Folders with on-chain files need a signed batch delete; empty
+      // folders exist only in local state and have no transaction.
+      if (data.transaction) {
+        await signAndVerifyTransaction(data.transaction);
+      }
+      setEmptyFolders(prev => {
+        const next = new Set();
+        for (const p of prev) {
+          if (p !== folderPath && !p.startsWith(folderPath + "/")) next.add(p);
+        }
+        return next;
+      });
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Delete folder", err);
+    }
+  };
+
   // --- FOLDER CREATION ---
   const handleCreateFolder = (name) => {
     const newPath = currentPath === "/" ? `/${name}` : `${currentPath}/${name}`;
@@ -299,6 +334,7 @@ function App() {
       handleCreateFolder={handleCreateFolder}
       handleMove={handleMove}
       handleDelete={handleDelete}
+      handleDeleteFolder={handleDeleteFolder}
       handleShare={handleShare}
       handleUnshare={handleUnshare}
       fileTree={fileTree}

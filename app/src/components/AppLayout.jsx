@@ -3,7 +3,7 @@ import FileContextMenu from "./FileContextMenu";
 
 export default function AppLayout({
   account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
-  uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleMove,
+  uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode
 }) {
@@ -154,11 +154,22 @@ export default function AppLayout({
                   </td>
                   <td style={{ fontSize: "13px", color: "#5f6368" }}>{item.type}</td>
                   <td style={{ textAlign: "right", paddingRight: "20px" }}>
-                    {item.type === 'file' && (
+                    {item.type === 'file' ? (
                       <button
                         onClick={(e) => setContextMenu({ x: e.clientX, y: e.clientY, file: item })}
                         style={{ background: "none", border: "none", color: "#5f6368", fontSize: "18px", cursor: "pointer" }}
                       >⋮</button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          const folderPath = currentPath === "/" ? `/${item.name}` : `${currentPath}/${item.name}`;
+                          if (window.confirm(`Delete folder "${item.name}" and all its contents?`)) {
+                            handleDeleteFolder(folderPath);
+                          }
+                        }}
+                        title="Delete folder"
+                        style={{ background: "none", border: "none", color: "#5f6368", fontSize: "16px", cursor: "pointer" }}
+                      >🗑</button>
                     )}
                   </td>
                 </tr>
