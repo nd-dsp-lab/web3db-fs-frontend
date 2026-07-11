@@ -116,7 +116,7 @@ export default function FileContextMenu({
           icon="⤷" label="Share" color="#00a86b"
           onClick={async () => {
             onClose();
-            const to = window.prompt("Enter recipient Ethereum address (0x...)");
+            const to = window.prompt("Enter recipient email or Ethereum address (0x...)");
             if (!to) return;
             await onShare(file.cid, to);
           }}

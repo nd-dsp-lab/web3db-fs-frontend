@@ -129,9 +129,37 @@ function App() {
   };
 
   // --- FILE ACTIONS (SHARE, UNSHARE, MOVE & DELETE) ---
-  const handleShare = async (cid, toAddress) => {
+  // Resolve an email to a wallet address via the backend (Privy lookup,
+  // pregenerating a wallet for unknown emails). Raw 0x input passes through.
+  const resolveRecipient = async (recipient) => {
+    const response = await fetch(`${API_BASE_URL}/resolve-recipient`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true"
+      },
+      body: JSON.stringify({ recipient })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.address) {
+      throw new Error(data.error || "Could not resolve recipient");
+    }
+    return data;
+  };
+
+  const handleShare = async (cid, recipient) => {
     if (!account) return;
     try {
+      let toAddress = recipient.trim();
+      if (!toAddress.startsWith("0x")) {
+        const resolved = await resolveRecipient(toAddress);
+        const note = resolved.pregenerated
+          ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the file will appear when they first log in."
+          : "";
+        const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
+        if (!window.confirm(`Share with ${toAddress} (${short})?${note}`)) return;
+        toAddress = resolved.address;
+      }
       const response = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
         headers: {
