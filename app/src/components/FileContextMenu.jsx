@@ -118,7 +118,7 @@ export default function FileContextMenu({
             onClose();
             const to = window.prompt("Enter recipient email or Ethereum address (0x...)");
             if (!to) return;
-            await onShare(file.cid, to);
+            await onShare(file.cid, to, file.filename);
           }}
         />
       )}

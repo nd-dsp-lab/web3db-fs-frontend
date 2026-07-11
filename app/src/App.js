@@ -147,10 +147,11 @@ function App() {
     return data;
   };
 
-  const handleShare = async (cid, recipient) => {
+  const handleShare = async (cid, recipient, filename) => {
     if (!account) return;
     try {
       let toAddress = recipient.trim();
+      const recipientEmail = toAddress.includes("@") ? toAddress.toLowerCase() : null;
       if (!toAddress.startsWith("0x")) {
         const resolved = await resolveRecipient(toAddress);
         const note = resolved.pregenerated
@@ -175,6 +176,26 @@ function App() {
         return;
       }
       await signAndVerifyTransaction(data.transaction);
+      // Best-effort email notification once the share is on-chain
+      if (recipientEmail) {
+        const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
+        fetch(`${API_BASE_URL}/notify-share`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "ngrok-skip-browser-warning": "true"
+          },
+          body: JSON.stringify({
+            recipient_email: recipientEmail,
+            filename: filename || "a file",
+            sharer: sharerName
+          })
+        }).then(async (r) => {
+          const d = await r.json().catch(() => ({}));
+          if (r.ok) console.log("Share notification sent to", recipientEmail);
+          else console.warn("Share notification failed:", d.error);
+        }).catch((e) => console.warn("Share notification failed:", e));
+      }
       retrieveFiles();
     } catch (err) {
       reportTxError("Share", err);
