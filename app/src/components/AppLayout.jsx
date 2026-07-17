@@ -79,6 +79,20 @@ export default function AppLayout({
     });
   };
 
+  // Close the New dropdown on outside click or Escape (clicks inside the
+  // container are stopped from propagating below)
+  useEffect(() => {
+    if (!isNewMenuOpen) return;
+    const close = () => setIsNewMenuOpen(false);
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [isNewMenuOpen]);
+
   // --- DESKTOP DRAG-AND-DROP UPLOAD ---
   // External drags carry "Files" in dataTransfer.types; internal tile drags
   // don't, so the two never conflict. Uploads land in currentPath.
@@ -399,7 +413,7 @@ export default function AppLayout({
           <span style={{ fontSize: "22px" }}>Web3FS</span>
         </div>
 
-        <div style={{ position: "relative", padding: "0 4px", marginBottom: "16px" }}>
+        <div onMouseDown={(e) => e.stopPropagation()} style={{ position: "relative", padding: "0 4px", marginBottom: "16px" }}>
           <button
             style={{
               display: "flex", alignItems: "center", gap: "10px", padding: "14px 22px",
