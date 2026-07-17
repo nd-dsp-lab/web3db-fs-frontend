@@ -56,6 +56,7 @@ export default function AppLayout({
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedFile, setDraggedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
+  const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
@@ -77,6 +78,28 @@ export default function AppLayout({
       return next;
     });
   };
+
+  // --- BACKGROUND RIGHT-CLICK MENU (New folder / uploads) ---
+  // Only in My Drive: uploads and new folders target the current path,
+  // which the other views don't have.
+  const onBackgroundContextMenu = (e) => {
+    if (view !== "my-drive" || searchQuery) return;
+    if (e.target.closest("[data-cid],[data-noselect],button,input,a,table thead")) return;
+    e.preventDefault();
+    setBgMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  useEffect(() => {
+    if (!bgMenu) return;
+    const close = () => setBgMenu(null);
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [bgMenu]);
 
   // --- RUBBER-BAND SELECTION ---
   // Drag from empty content-area background to draw a selection box; file
@@ -254,6 +277,13 @@ export default function AppLayout({
     </button>
   );
 
+  // Shared by the New button dropdown and the background right-click menu
+  const newMenuItems = [
+    { Icon: FolderPlus, label: "New folder", action: () => { const n = prompt("Folder name"); if (n) handleCreateFolder(n); } },
+    { Icon: Upload, label: "File upload", action: () => triggerUpload("single") },
+    { Icon: FolderUp, label: "Folder upload", action: () => triggerUpload("folder") },
+  ];
+
   // Breadcrumb: "My Drive > folder > sub"
   const crumbs = currentPath === "/" ? [] : currentPath.split("/").filter(Boolean);
   const crumbPath = (idx) => "/" + crumbs.slice(0, idx + 1).join("/");
@@ -346,14 +376,10 @@ export default function AppLayout({
               backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
               zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
             }}>
-              {[
-                { Icon: FolderPlus, label: "New folder", action: () => { const n = prompt("Folder name"); if (n) handleCreateFolder(n); setIsNewMenuOpen(false); } },
-                { Icon: Upload, label: "File upload", action: () => triggerUpload("single") },
-                { Icon: FolderUp, label: "Folder upload", action: () => triggerUpload("folder") },
-              ].map(({ Icon, label, action }) => (
+              {newMenuItems.map(({ Icon, label, action }) => (
                 <div
                   key={label}
-                  onClick={action}
+                  onClick={() => { action(); setIsNewMenuOpen(false); }}
                   style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px" }}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
@@ -549,7 +575,7 @@ export default function AppLayout({
           </div>
 
           {/* CONTENT */}
-          <div ref={contentRef} onMouseDown={onBandStart} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
+          <div ref={contentRef} onMouseDown={onBandStart} onContextMenu={onBackgroundContextMenu} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
             {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
               <>
                 {folders.length > 0 && (
@@ -722,6 +748,29 @@ export default function AppLayout({
           </div>
         </div>
       </main>
+
+      {bgMenu && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed", top: bgMenu.y, left: bgMenu.x, width: "200px",
+            backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
+            zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
+          }}
+        >
+          {newMenuItems.map(({ Icon, label, action }) => (
+            <div
+              key={label}
+              onClick={() => { setBgMenu(null); action(); }}
+              style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px" }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            >
+              <Icon size={17} color={theme.subText} /> {label}
+            </div>
+          ))}
+        </div>
+      )}
 
       {band && (
         <div style={{
