@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Pencil, Share2, UserMinus, FolderInput, Trash2, ChevronRight, Folder } from "lucide-react";
+import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder } from "lucide-react";
 
 // Recursively builds a flat list of { label, path } for all folders in the tree
 function collectFolders(node, parentPath = "") {
@@ -29,8 +29,7 @@ export default function FileContextMenu({
   currentPath,
   onClose,
   onDownload,
-  onShare,
-  onUnshare,
+  onShareOpen,
   onDelete,
   onMove,
 }) {
@@ -61,13 +60,6 @@ export default function FileContextMenu({
   }, [x, y]);
 
   const folders = collectFolders(fileTree).filter(f => f.path !== currentPath);
-
-  // Derive shared list (mirrors AppLayout logic)
-  let sharedList = file.shared_with || [];
-  if (sharedList.length > 0 && typeof sharedList[0] === "object") {
-    sharedList = sharedList.map(s => s.address || s.to || s.owner || JSON.stringify(s));
-  }
-  const hasShared = sharedList.length > 0;
 
   const { permissions, is_owner } = file;
 
@@ -126,39 +118,11 @@ export default function FileContextMenu({
 
       <div style={dividerStyle} />
 
-      {/* SHARE — owner only */}
+      {/* SHARE — owner only; opens the share modal (add + revoke access) */}
       {is_owner && (
         <Item
           icon={<Share2 size={15} />} label="Share" color="#00a86b"
-          onClick={async () => {
-            onClose();
-            const to = window.prompt("Enter recipient email or Ethereum address (0x...)");
-            if (!to) return;
-            await onShare(file.cid, to, file.filename);
-          }}
-        />
-      )}
-
-      {/* UNSHARE — owner + has shared users */}
-      {is_owner && hasShared && (
-        <Item
-          icon={<UserMinus size={15} />} label="Unshare" color="#ff9800"
-          onClick={async () => {
-            onClose();
-            let addr = null;
-            if (sharedList.length === 1) {
-              const ok = window.confirm(`Unshare "${file.filename}" with ${sharedList[0]}?`);
-              if (!ok) return;
-              addr = sharedList[0];
-            } else {
-              addr = window.prompt(
-                `Shared with: ${sharedList.join(", ")}\n\nEnter address to unshare:`
-              );
-              if (!addr) return;
-              addr = addr.trim();
-            }
-            await onUnshare(file.cid, addr);
-          }}
+          onClick={() => { onClose(); onShareOpen(file); }}
         />
       )}
 

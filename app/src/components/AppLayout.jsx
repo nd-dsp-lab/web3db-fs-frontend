@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import PreviewModal from "./PreviewModal";
+import ShareModal from "./ShareModal";
 
 // Pick an icon + accent color from the file extension, similar to how
 // Drive colors PDFs red, sheets green, etc.
@@ -42,6 +43,7 @@ export default function AppLayout({
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
+  const [shareFile, setShareFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
 
   const downloadFile = async (file) => {
@@ -484,6 +486,18 @@ export default function AppLayout({
       <input type="file" id="fileIn" style={{ display: "none" }} onChange={uploadFile} />
       <input type="file" id="folderIn" webkitdirectory="true" directory="" multiple style={{ display: "none" }} onChange={uploadFile} />
 
+      {shareFile && (
+        <ShareModal
+          file={shareFile}
+          account={account}
+          API_BASE_URL={API_BASE_URL}
+          onClose={() => setShareFile(null)}
+          onShare={handleShare}
+          onUnshare={handleUnshare}
+          darkMode={darkMode}
+        />
+      )}
+
       {previewFile && (
         <PreviewModal
           file={previewFile}
@@ -504,8 +518,7 @@ export default function AppLayout({
           currentPath={currentPath}
           onClose={() => setContextMenu(null)}
           onDownload={downloadFile}
-          onShare={handleShare}
-          onUnshare={handleUnshare}
+          onShareOpen={(file) => setShareFile(file)}
           onDelete={handleDelete}
           onMove={handleMove}
         />
