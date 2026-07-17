@@ -33,7 +33,14 @@ export function fileVisual(filename = "") {
   return { Icon: FileIcon, color: "#5f6368" };
 }
 
-const THUMBNAIL_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf"];
+const THUMBNAIL_EXTENSIONS = [
+  // images + pdf (rendered directly)
+  "png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf",
+  // text-like files (backend renders a page snippet)
+  "txt", "md", "csv", "json", "js", "jsx", "ts", "tsx", "py", "html", "css",
+  "xml", "yaml", "yml", "toml", "ini", "log", "sh", "c", "cpp", "h", "java",
+  "go", "rs", "rb", "sql", "env", "cfg", "conf",
+];
 const hasThumbnail = (filename = "") => THUMBNAIL_EXTENSIONS.includes(filename.split(".").pop().toLowerCase());
 
 // CID -> object URL (or "failed"); module-level so navigation and re-renders
