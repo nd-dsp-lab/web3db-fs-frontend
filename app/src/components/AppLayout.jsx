@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
@@ -76,6 +76,51 @@ export default function AppLayout({
       next.has(cid) ? next.delete(cid) : next.add(cid);
       return next;
     });
+  };
+
+  // --- RUBBER-BAND SELECTION ---
+  // Drag from empty content-area background to draw a selection box; file
+  // tiles/rows intersecting it get selected. Ctrl/shift-drag adds to the
+  // existing selection. A plain click on empty space clears it.
+  const contentRef = useRef(null);
+  const [band, setBand] = useState(null); // viewport coords {left, top, right, bottom}
+
+  const onBandStart = (e) => {
+    if (e.button !== 0) return;
+    // Only start from true background — not tiles, rows, or controls
+    if (e.target.closest("[data-cid],[data-noselect],button,input,a,table thead")) return;
+    const additive = e.ctrlKey || e.metaKey || e.shiftKey;
+    const base = additive ? new Set(selected) : new Set();
+    const start = { x: e.clientX, y: e.clientY };
+    let moved = false;
+    document.body.style.userSelect = "none";
+
+    const onMove = (ev) => {
+      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) return;
+      moved = true;
+      const rect = {
+        left: Math.min(start.x, ev.clientX), right: Math.max(start.x, ev.clientX),
+        top: Math.min(start.y, ev.clientY), bottom: Math.max(start.y, ev.clientY),
+      };
+      setBand(rect);
+      const hits = new Set(base);
+      contentRef.current?.querySelectorAll("[data-cid]").forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.left < rect.right && r.right > rect.left && r.top < rect.bottom && r.bottom > rect.top) {
+          hits.add(el.dataset.cid);
+        }
+      });
+      setSelected(hits);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+      setBand(null);
+      if (!moved && !additive) setSelected(new Set());
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
   };
 
   const downloadFile = async (file) => {
@@ -504,7 +549,7 @@ export default function AppLayout({
           </div>
 
           {/* CONTENT */}
-          <div style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
+          <div ref={contentRef} onMouseDown={onBandStart} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
             {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
               <>
                 {folders.length > 0 && (
@@ -516,6 +561,7 @@ export default function AppLayout({
                         return (
                           <div
                             key={key}
+                            data-noselect="true"
                             onClick={() => navigateInto(item.name)}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => onFolderDrop(e, item.name)}
@@ -547,9 +593,13 @@ export default function AppLayout({
                         return (
                           <div
                             key={key}
+                            data-cid={item.cid}
                             draggable
                             onDragStart={() => onFileDragStart(item)}
-                            onClick={() => setPreviewFile(item)}
+                            onClick={(e) => {
+                              if (e.ctrlKey || e.metaKey) { toggleSelect(item.cid); return; }
+                              setPreviewFile(item);
+                            }}
                             onContextMenu={(e) => openMenuForFile(e, item)}
                             onMouseEnter={() => setHoveredKey(key)}
                             onMouseLeave={() => setHoveredKey(null)}
@@ -614,6 +664,7 @@ export default function AppLayout({
                     return (
                       <tr
                         key={key}
+                        {...(item.type === "file" ? { "data-cid": item.cid } : { "data-noselect": "true" })}
                         draggable={item.type === "file"}
                         onDragStart={() => item.type === "file" && onFileDragStart(item)}
                         onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
@@ -632,7 +683,10 @@ export default function AppLayout({
                         </td>
                         <td
                           style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
-                          onClick={() => item.type === "folder" ? navigateInto(item.name) : setPreviewFile(item)}
+                          onClick={(e) => {
+                            if (item.type === "file" && (e.ctrlKey || e.metaKey)) { toggleSelect(item.cid); return; }
+                            item.type === "folder" ? navigateInto(item.name) : setPreviewFile(item);
+                          }}
                         >
                           <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
                           {item.name}
@@ -668,6 +722,15 @@ export default function AppLayout({
           </div>
         </div>
       </main>
+
+      {band && (
+        <div style={{
+          position: "fixed", left: band.left, top: band.top,
+          width: band.right - band.left, height: band.bottom - band.top,
+          backgroundColor: "rgba(26,115,232,0.12)", border: "1px solid rgba(26,115,232,0.6)",
+          zIndex: 5000, pointerEvents: "none",
+        }} />
+      )}
 
       <input type="file" id="fileIn" style={{ display: "none" }} onChange={uploadFile} />
       <input type="file" id="folderIn" webkitdirectory="true" directory="" multiple style={{ display: "none" }} onChange={uploadFile} />
