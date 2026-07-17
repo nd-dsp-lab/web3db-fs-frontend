@@ -486,10 +486,50 @@ function App() {
   const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
 
   // --- UPLOAD LOGIC ---
+  // Shared by the New-menu inputs and desktop drag-and-drop
+  const submitUpload = async (endpoint, formData, count, firstName, onPrepared) => {
+    const tId = toast.loading(count > 1 ? `Uploading ${count} files to IPFS…` : `Uploading "${firstName}"…`);
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        method: "POST",
+        body: formData,
+        headers: { "ngrok-skip-browser-warning": "true" }
+      });
+
+      const data = await response.json();
+      // Single upload returns {transaction}; batch returns {uploaded_files, skipped_files}
+      const txs = data.uploaded_files
+        ? data.uploaded_files.map((u) => u.transaction).filter(Boolean)
+        : data.transaction ? [data.transaction] : [];
+      const skipped = data.skipped_files?.length || 0;
+
+      if (!response.ok || txs.length === 0) {
+        console.error("Upload prepare failed:", data);
+        if (data.reason === "file_already_exists") {
+          toast.update(tId, "This exact file already exists (identical content), owned by " + data.owner, "error", { duration: 8000 });
+        } else if (skipped > 0) {
+          toast.update(tId, `Nothing to upload — ${skipped} file(s) already exist`, "info");
+        } else {
+          toast.update(tId, "Upload failed. Check console for details.", "error");
+        }
+        return;
+      }
+      onPrepared?.();
+      for (let i = 0; i < txs.length; i++) {
+        if (txs.length > 1) toast.update(tId, `Signing ${i + 1}/${txs.length}…`, "loading");
+        await signAndVerifyTransaction(txs[i], txs.length === 1 ? tId : undefined);
+      }
+      const skippedNote = skipped > 0 ? ` (${skipped} skipped — already exist)` : "";
+      toast.update(tId, (txs.length > 1 ? `Uploaded ${txs.length} files` : `Uploaded "${firstName}"`) + skippedNote, "success", { duration: skipped ? 8000 : undefined });
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Upload", err, tId);
+    }
+  };
+
   const handleUpload = async (e) => {
     const inputFiles = e.target.files;
     if (!inputFiles?.length || !account) return;
-    const tId = toast.loading(inputFiles.length > 1 ? `Uploading ${inputFiles.length} files to IPFS…` : `Uploading "${inputFiles[0].name}"…`);
 
     const formData = new FormData();
     formData.append("user_address", account);
@@ -505,32 +545,35 @@ function App() {
       formData.append("file", inputFiles[0]);
       formData.append("folder_path", currentPath);
     }
-    
-    try {
-      const endpoint = uploadMode === "folder" ? "/upload-folder" : "/upload";
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, { 
-        method: "POST", 
-        body: formData, 
-        headers: { "ngrok-skip-browser-warning": "true" } 
-      });
 
-      const data = await response.json();
-      if (!response.ok || !data.transaction) {
-        console.error("Upload prepare failed:", data);
-        if (data.reason === "file_already_exists") {
-          toast.update(tId, "This exact file already exists (identical content), owned by " + data.owner, "error", { duration: 8000 });
-        } else {
-          toast.update(tId, "Upload failed. Check console for details.", "error");
-        }
-        return;
+    const endpoint = uploadMode === "folder" ? "/upload-folder" : "/upload";
+    await submitUpload(endpoint, formData, inputFiles.length, inputFiles[0].name, () => { e.target.value = null; });
+  };
+
+  // Desktop drag-and-drop: single file goes through /upload, several files
+  // through /upload-folder (one batch transaction), all into currentPath
+  const handleDropUpload = async (droppedFiles) => {
+    if (!account) { toast.info("Sign in first"); return; }
+    const files = [...droppedFiles];
+    if (!files.length) return;
+
+    const formData = new FormData();
+    formData.append("user_address", account);
+
+    let endpoint;
+    if (files.length === 1) {
+      endpoint = "/upload";
+      formData.append("file", files[0]);
+      formData.append("folder_path", currentPath);
+    } else {
+      endpoint = "/upload-folder";
+      for (const f of files) {
+        const fullPath = currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`;
+        formData.append("files", f);
+        formData.append("paths", fullPath);
       }
-      e.target.value = null;
-      await signAndVerifyTransaction(data.transaction, tId);
-      toast.update(tId, inputFiles.length > 1 ? `Uploaded ${inputFiles.length} files` : `Uploaded "${inputFiles[0].name}"`, "success");
-      retrieveFiles();
-    } catch (err) {
-      reportTxError("Upload", err, tId);
     }
+    await submitUpload(endpoint, formData, files.length, files[0].name);
   };
 
   const handleDeleteFolder = async (folderPath) => {
@@ -588,6 +631,7 @@ function App() {
       currentPath={currentPath}
       setCurrentPath={setCurrentPath}
       uploadFile={handleUpload}
+      handleDropUpload={handleDropUpload}
       setUploadMode={setUploadMode}
       handleCreateFolder={handleCreateFolder}
       handleMove={handleMove}

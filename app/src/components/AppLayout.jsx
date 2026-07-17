@@ -47,7 +47,7 @@ const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: 
 export default function AppLayout({
   account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
-  handleTrash, handleRestore,
+  handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, storageUsed, toast,
@@ -77,6 +77,48 @@ export default function AppLayout({
       next.has(cid) ? next.delete(cid) : next.add(cid);
       return next;
     });
+  };
+
+  // --- DESKTOP DRAG-AND-DROP UPLOAD ---
+  // External drags carry "Files" in dataTransfer.types; internal tile drags
+  // don't, so the two never conflict. Uploads land in currentPath.
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
+  const isExternalDrag = (e) => e.dataTransfer?.types?.includes("Files");
+
+  const onDragEnter = (e) => {
+    if (!isExternalDrag(e)) return;
+    e.preventDefault();
+    dragDepth.current++;
+    if (view === "my-drive" && !searchQuery) setDragOver(true);
+  };
+  const onDragLeave = (e) => {
+    if (!isExternalDrag(e)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  };
+  const onDragOverContent = (e) => {
+    if (isExternalDrag(e)) e.preventDefault(); // required to allow the drop
+  };
+  const onExternalDrop = (e) => {
+    if (!isExternalDrag(e)) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (view !== "my-drive" || searchQuery) {
+      toast.info("Switch to My Drive to upload by dropping files");
+      return;
+    }
+    const files = [];
+    let hadFolder = false;
+    for (const item of e.dataTransfer.items || []) {
+      const entry = item.webkitGetAsEntry?.();
+      if (entry?.isDirectory) { hadFolder = true; continue; }
+      const f = item.getAsFile?.();
+      if (f) files.push(f);
+    }
+    if (hadFolder) toast.info("Folders can't be dropped — use New → Folder upload");
+    if (files.length) handleDropUpload(files);
   };
 
   // --- BACKGROUND RIGHT-CLICK MENU (New folder / uploads) ---
@@ -469,10 +511,30 @@ export default function AppLayout({
           )}
         </header>
 
-        <div style={{
-          flex: 1, margin: "12px 16px 16px 4px", backgroundColor: theme.card,
-          borderRadius: "16px", display: "flex", flexDirection: "column", overflow: "hidden",
-        }}>
+        <div
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDragOver={onDragOverContent}
+          onDrop={onExternalDrop}
+          style={{
+            flex: 1, margin: "12px 16px 16px 4px", backgroundColor: theme.card,
+            borderRadius: "16px", display: "flex", flexDirection: "column", overflow: "hidden",
+            position: "relative",
+          }}
+        >
+          {dragOver && (
+            <div style={{
+              position: "absolute", inset: 0, zIndex: 50, pointerEvents: "none",
+              backgroundColor: "rgba(26,115,232,0.08)", border: "2px dashed #1A73E8",
+              borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center",
+              flexDirection: "column", gap: "10px",
+            }}>
+              <Upload size={40} color="#1A73E8" strokeWidth={1.5} />
+              <div style={{ fontSize: "16px", fontWeight: 500, color: theme.text }}>
+                Drop files to upload to {currentPath === "/" ? "My Drive" : `"${crumbs[crumbs.length - 1]}"`}
+              </div>
+            </div>
+          )}
           {/* Title row: breadcrumb + view toggle */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 6px" }}>
             {someSelected ? (
