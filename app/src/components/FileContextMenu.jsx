@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Download, Pencil, Share2, UserMinus, FolderInput, Trash2, ChevronRight, Folder } from "lucide-react";
 
 // Recursively builds a flat list of { label, path } for all folders in the tree
 function collectFolders(node, parentPath = "") {
@@ -68,7 +69,7 @@ export default function FileContextMenu({
   }
   const hasShared = sharedList.length > 0;
 
-  const { DOWNLOAD, permissions, is_owner } = file;
+  const { permissions, is_owner } = file;
 
   // ---- Styles ----
   const menuStyle = {
@@ -95,7 +96,7 @@ export default function FileContextMenu({
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = "#f5f5f5"; }}
       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
     >
-      <span style={{ width: "16px", textAlign: "center" }}>{icon}</span>
+      <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>
       {label}
     </div>
   );
@@ -105,7 +106,22 @@ export default function FileContextMenu({
 
       {/* DOWNLOAD */}
       {(permissions & 4) !== 0 && (
-        <Item icon="↓" label="Download" onClick={() => { onDownload(file); onClose(); }} />
+        <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
+      )}
+
+      {/* RENAME — owner only; a move within the same folder */}
+      {is_owner && (
+        <Item
+          icon={<Pencil size={15} />} label="Rename"
+          onClick={async () => {
+            onClose();
+            const newName = window.prompt("New name", file.filename);
+            if (!newName || newName === file.filename) return;
+            const folder = file.folder_path || currentPath || "/";
+            const newPath = folder === "/" ? `/${newName}` : `${folder.replace(/\/+$/, "")}/${newName}`;
+            await onMove(file.cid, newPath);
+          }}
+        />
       )}
 
       <div style={dividerStyle} />
@@ -113,7 +129,7 @@ export default function FileContextMenu({
       {/* SHARE — owner only */}
       {is_owner && (
         <Item
-          icon="⤷" label="Share" color="#00a86b"
+          icon={<Share2 size={15} />} label="Share" color="#00a86b"
           onClick={async () => {
             onClose();
             const to = window.prompt("Enter recipient email or Ethereum address (0x...)");
@@ -126,7 +142,7 @@ export default function FileContextMenu({
       {/* UNSHARE — owner + has shared users */}
       {is_owner && hasShared && (
         <Item
-          icon="✕" label="Unshare" color="#ff9800"
+          icon={<UserMinus size={15} />} label="Unshare" color="#ff9800"
           onClick={async () => {
             onClose();
             let addr = null;
@@ -164,10 +180,10 @@ export default function FileContextMenu({
             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
           >
             <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <span style={{ width: "16px", textAlign: "center" }}>▷</span>
+              <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}><FolderInput size={15} /></span>
               Move to
             </span>
-            <span style={{ color: "#999", fontSize: "0.8em" }}>▶</span>
+            <ChevronRight size={14} color="#999" />
           </div>
 
           {/* Folder submenu */}
@@ -193,7 +209,7 @@ export default function FileContextMenu({
                   onMouseEnter={e => e.currentTarget.style.background = "#f5f5f5"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                 >
-                  <span style={{ width: "16px" }}>▸</span> /
+                  <Folder size={14} color="#5f6368" /> /
                 </div>
               )}
 
@@ -212,7 +228,7 @@ export default function FileContextMenu({
                   onMouseEnter={e => e.currentTarget.style.background = "#f5f5f5"}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                 >
-                  <span style={{ width: "16px" }}>▸</span> {label}
+                  <Folder size={14} color="#5f6368" /> {label}
                 </div>
               ))}
             </div>
@@ -225,7 +241,7 @@ export default function FileContextMenu({
       {/* DELETE — owner only */}
       {is_owner && (
         <Item
-          icon="⊗" label="Delete" color="#d9534f"
+          icon={<Trash2 size={15} />} label="Delete" color="#d9534f"
           onClick={async () => {
             onClose();
             const ok = window.confirm(`Delete "${file.filename}" (CID: ${file.cid})?`);

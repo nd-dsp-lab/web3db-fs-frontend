@@ -1,15 +1,46 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
+import {
+  Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
+  FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
+  ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
+  Sun, Moon,
+} from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
+
+// Pick an icon + accent color from the file extension, similar to how
+// Drive colors PDFs red, sheets green, etc.
+function fileVisual(filename = "") {
+  const ext = filename.split(".").pop().toLowerCase();
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext))
+    return { Icon: ImageIcon, color: "#188038" };
+  if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext))
+    return { Icon: Video, color: "#d93025" };
+  if (["mp3", "wav", "ogg", "flac", "m4a"].includes(ext))
+    return { Icon: Music, color: "#f29900" };
+  if (["zip", "tar", "gz", "rar", "7z"].includes(ext))
+    return { Icon: Archive, color: "#5f6368" };
+  if (["js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "java", "json", "html", "css", "sh"].includes(ext))
+    return { Icon: FileCode, color: "#1a73e8" };
+  if (["pdf"].includes(ext))
+    return { Icon: FileText, color: "#d93025" };
+  if (["doc", "docx", "txt", "md", "rtf"].includes(ext))
+    return { Icon: FileText, color: "#1a73e8" };
+  if (["xls", "xlsx", "csv"].includes(ext))
+    return { Icon: FileText, color: "#188038" };
+  return { Icon: FileIcon, color: "#5f6368" };
+}
 
 export default function AppLayout({
   account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
-  view, setView, searchQuery, setSearchQuery, darkMode
+  view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedFile, setDraggedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
+  const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
+  const [hoveredKey, setHoveredKey] = useState(null);
 
   const downloadFile = async (file) => {
     if (!account) {
@@ -34,12 +65,15 @@ export default function AppLayout({
     }
   };
 
-  const theme = {
-    bg: darkMode ? "#121212" : "#F7F9FC",
-    card: darkMode ? "#1E1E1E" : "white",
-    text: darkMode ? "#E8EAED" : "#3c4043",
-    border: darkMode ? "#3C4043" : "#ddd",
-    searchBg: darkMode ? "#2D2E30" : "#f1f3f4"
+  // Google Drive palette (light) with a matching dark variant
+  const theme = darkMode ? {
+    bg: "#131314", card: "#1E1F20", text: "#E3E3E3", subText: "#9AA0A6",
+    border: "#3C4043", searchBg: "#282A2C", tile: "#2D2E31", tileHover: "#37393B",
+    navActive: "#004A77", navActiveText: "#C2E7FF", hoverRow: "#2D2E31",
+  } : {
+    bg: "#F8FAFD", card: "#FFFFFF", text: "#1F1F1F", subText: "#5F6368",
+    border: "#E0E3E7", searchBg: "#EDF1F7", tile: "#F0F4F9", tileHover: "#E1E5EA",
+    navActive: "#C2E7FF", navActiveText: "#001D35", hoverRow: "#F5F8FC",
   };
 
   // --- DRAG AND DROP LOGIC ---
@@ -50,10 +84,8 @@ export default function AppLayout({
   const onFolderDrop = async (e, targetFolderName) => {
     e.preventDefault();
     if (!draggedFile) return;
-    
     const targetPath = currentPath === "/" ? `/${targetFolderName}` : `${currentPath}/${targetFolderName}`;
     const destination = `${targetPath}/${draggedFile.name}`;
-    
     await handleMove(draggedFile.cid, destination);
     setDraggedFile(null);
   };
@@ -67,121 +99,376 @@ export default function AppLayout({
     }, 10);
   };
 
+  const openMenuForFile = (e, item) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, file: item });
+  };
+
+  const confirmDeleteFolder = (folderName) => {
+    const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
+    if (window.confirm(`Delete folder "${folderName}" and all its contents?`)) {
+      handleDeleteFolder(folderPath);
+    }
+  };
+
+  const navigateInto = (folderName) => {
+    setCurrentPath(currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`);
+  };
+
+  // Account chip: social users see name/email, wallet users see the address
+  const displayName = user?.google?.name || user?.email?.address ||
+    (account ? `${account.slice(0, 6)}...${account.slice(-4)}` : null);
+  const avatarLetter = (user?.google?.name || user?.email?.address || account || "?")[0].toUpperCase();
+
+  const folders = (displayItems || []).filter((i) => i.type === "folder");
+  const fileItems = (displayItems || []).filter((i) => i.type === "file");
+
+  // --- Reusable bits ---
+  const NavItem = ({ id, icon: Icon, label }) => (
+    <div
+      onClick={() => { setView(id); setSearchQuery(""); }}
+      style={{
+        display: "flex", alignItems: "center", gap: "14px", padding: "8px 16px",
+        cursor: "pointer", borderRadius: "999px", fontSize: "14px",
+        backgroundColor: view === id ? theme.navActive : "transparent",
+        color: view === id ? theme.navActiveText : theme.text,
+        fontWeight: view === id ? 600 : 400, marginBottom: "2px",
+      }}
+      onMouseEnter={(e) => { if (view !== id) e.currentTarget.style.backgroundColor = theme.tile; }}
+      onMouseLeave={(e) => { if (view !== id) e.currentTarget.style.backgroundColor = "transparent"; }}
+    >
+      <Icon size={18} strokeWidth={1.8} />
+      {label}
+    </div>
+  );
+
+  const MoreButton = ({ item, visible }) => (
+    <button
+      onClick={(e) => item.type === "file" ? openMenuForFile(e, item) : confirmDeleteFolder(item.name)}
+      title={item.type === "file" ? "More actions" : "Delete folder"}
+      style={{
+        background: "none", border: "none", cursor: "pointer", color: theme.subText,
+        borderRadius: "50%", width: "30px", height: "30px", display: "flex",
+        alignItems: "center", justifyContent: "center", flexShrink: 0,
+        opacity: visible ? 1 : 0, transition: "opacity 0.1s",
+      }}
+    >
+      {item.type === "file" ? <MoreVertical size={17} /> : <Trash2 size={16} />}
+    </button>
+  );
+
+  // Breadcrumb: "My Drive > folder > sub"
+  const crumbs = currentPath === "/" ? [] : currentPath.split("/").filter(Boolean);
+  const crumbPath = (idx) => "/" + crumbs.slice(0, idx + 1).join("/");
+
+  const emptyState = (
+    <div style={{ textAlign: "center", padding: "80px 0", color: theme.subText }}>
+      <Folder size={56} strokeWidth={1} style={{ opacity: 0.4, marginBottom: "12px" }} />
+      <div style={{ fontSize: "16px", color: theme.text, marginBottom: "4px" }}>
+        {searchQuery ? "No matching files" : "This folder is empty"}
+      </div>
+      <div style={{ fontSize: "13px" }}>
+        {searchQuery ? "Try a different search term." : "Use the New button to upload files or create folders."}
+      </div>
+    </div>
+  );
+
+  const sectionLabel = (text) => (
+    <div style={{ fontSize: "13px", fontWeight: 500, color: theme.subText, margin: "18px 4px 10px" }}>{text}</div>
+  );
+
   return (
-    <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: "sans-serif" }}>
+    <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: "'Google Sans', Roboto, Arial, sans-serif", color: theme.text }}>
       {/* SIDEBAR */}
-      <aside style={{ width: "250px", padding: "16px" }}>
-        <div 
-          style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "30px", cursor: "pointer" }} 
+      <aside style={{ width: "256px", padding: "8px 12px 16px", display: "flex", flexDirection: "column" }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 8px 20px", cursor: "pointer" }}
           onClick={() => { setView("my-drive"); setCurrentPath("/"); setSearchQuery(""); }}
         >
-          <div style={{ backgroundColor: "#4285F4", color: "white", padding: "4px 8px", borderRadius: "4px", fontWeight: "bold" }}>Δ</div>
-          <span style={{ fontSize: "22px", color: theme.text }}>Drive</span>
+          <div style={{ backgroundColor: "#1A73E8", color: "white", width: "32px", height: "32px", borderRadius: "8px", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>Δ</div>
+          <span style={{ fontSize: "22px" }}>Web3FS</span>
         </div>
 
-        <div style={{ position: "relative" }}>
-          <button 
-            style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 24px", borderRadius: "24px", border: "1px solid " + theme.border, cursor: "pointer", backgroundColor: theme.card, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}
+        <div style={{ position: "relative", padding: "0 4px", marginBottom: "16px" }}>
+          <button
+            style={{
+              display: "flex", alignItems: "center", gap: "10px", padding: "14px 22px",
+              borderRadius: "16px", border: "none", cursor: "pointer",
+              backgroundColor: theme.card, color: theme.text, fontSize: "14px", fontWeight: 500,
+              boxShadow: "0 1px 3px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.1)",
+            }}
             onClick={() => setIsNewMenuOpen(!isNewMenuOpen)}
           >
-            <span style={{ color: "#4285F4", fontSize: "24px" }}>+</span> <span style={{color: theme.text, fontWeight: "500"}}>New</span>
+            <Plus size={20} color="#1A73E8" /> New
           </button>
 
           {isNewMenuOpen && (
-            <div style={{ position: "absolute", top: "55px", left: "0", width: "180px", backgroundColor: theme.card, border: "1px solid " + theme.border, borderRadius: "8px", zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "8px 0" }}>
-              <div style={{ padding: "10px 20px", cursor: "pointer", color: theme.text }} onClick={() => { const n = prompt("Folder name"); if(n) handleCreateFolder(n); setIsNewMenuOpen(false); }}>📁 New folder</div>
-              <hr style={{ border: "0", borderTop: "1px solid " + theme.border }} />
-              <div style={{ padding: "10px 20px", cursor: "pointer", color: theme.text }} onClick={() => triggerUpload("single")}>📄 File upload</div>
-              <div style={{ padding: "10px 20px", cursor: "pointer", color: theme.text }} onClick={() => triggerUpload("folder")}>📂 Folder upload</div>
+            <div style={{
+              position: "absolute", top: "56px", left: "4px", width: "200px",
+              backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
+              zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
+            }}>
+              {[
+                { Icon: FolderPlus, label: "New folder", action: () => { const n = prompt("Folder name"); if (n) handleCreateFolder(n); setIsNewMenuOpen(false); } },
+                { Icon: Upload, label: "File upload", action: () => triggerUpload("single") },
+                { Icon: FolderUp, label: "Folder upload", action: () => triggerUpload("folder") },
+              ].map(({ Icon, label, action }) => (
+                <div
+                  key={label}
+                  onClick={action}
+                  style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px" }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <Icon size={17} color={theme.subText} /> {label}
+                </div>
+              ))}
             </div>
           )}
         </div>
-        
-        <nav style={{ marginTop: "20px" }}>
-            <div style={{ padding: "10px 20px", cursor: "pointer", borderRadius: "0 20px 20px 0", backgroundColor: view === "my-drive" ? "#E2EEFF" : "transparent", color: view === "my-drive" ? "#1a73e8" : theme.text, fontWeight: "500" }} onClick={() => {setView("my-drive"); setSearchQuery("");}}>🏠 My Drive</div>
-            <div style={{ padding: "10px 20px", cursor: "pointer", borderRadius: "0 20px 20px 0", backgroundColor: view === "shared" ? "#E2EEFF" : "transparent", color: view === "shared" ? "#1a73e8" : theme.text, fontWeight: "500" }} onClick={() => {setView("shared"); setSearchQuery("");}}>👥 Shared</div>
+
+        <nav>
+          <NavItem id="my-drive" icon={HardDrive} label="My Drive" />
+          <NavItem id="shared" icon={Users} label="Shared" />
         </nav>
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <main style={{ flex: 1, margin: "8px", backgroundColor: theme.card, borderRadius: "16px", border: "1px solid " + theme.border, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <header style={{ height: "64px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", borderBottom: "1px solid " + theme.border }}>
-          <input 
-            type="text" 
-            placeholder="Search in Drive" 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: "60%", padding: "12px 20px", borderRadius: "24px", border: "none", backgroundColor: theme.searchBg, color: theme.text, outline: "none" }}
-          />
-          <button onClick={account ? disconnectWallet : connectWallet} style={{ backgroundColor: "#1a73e8", color: "white", border: "none", padding: "10px 20px", borderRadius: "24px", cursor: "pointer", fontWeight: "500" }}>
-            {account ? `${account.slice(0,6)}...${account.slice(-4)}` : "Connect Wallet"}
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <header style={{ height: "64px", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 0", gap: "16px" }}>
+          <div style={{ position: "relative", flex: 1, maxWidth: "640px" }}>
+            <Search size={18} style={{ position: "absolute", left: "18px", top: "50%", transform: "translateY(-50%)", color: theme.subText }} />
+            <input
+              type="text"
+              placeholder="Search in Web3FS"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "13px 20px 13px 48px",
+                borderRadius: "999px", border: "none", backgroundColor: theme.searchBg,
+                color: theme.text, outline: "none", fontSize: "15px",
+              }}
+            />
+          </div>
+
+          <button
+            onClick={toggleTheme}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            style={{
+              background: "none", border: "none", cursor: "pointer", color: theme.subText,
+              width: "40px", height: "40px", borderRadius: "50%", display: "flex",
+              alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.searchBg}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+          >
+            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
           </button>
+
+          {account ? (
+            <div
+              onClick={() => { if (window.confirm("Log out of Web3FS?")) disconnectWallet(); }}
+              title={account}
+              style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", padding: "4px 12px 4px 4px", borderRadius: "999px", backgroundColor: theme.searchBg }}
+            >
+              <div style={{
+                width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "#1A73E8",
+                color: "white", display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "15px", fontWeight: 600,
+              }}>{avatarLetter}</div>
+              <span style={{ fontSize: "13px", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</span>
+            </div>
+          ) : (
+            <button onClick={connectWallet} style={{ backgroundColor: "#1A73E8", color: "white", border: "none", padding: "10px 22px", borderRadius: "999px", cursor: "pointer", fontWeight: 500, fontSize: "14px" }}>
+              Sign in
+            </button>
+          )}
         </header>
 
-        <div style={{ padding: "16px 24px", flex: 1, overflowY: "auto" }}>
-          <h2 style={{ fontSize: "18px", color: theme.text, marginBottom: "20px" }}>
-            {searchQuery ? `Results for "${searchQuery}"` : currentPath === "/" ? "My Drive" : `My Drive > ${currentPath}`}
-          </h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid " + theme.border, textAlign: "left", color: "#5f6368", fontSize: "13px" }}>
-                <th style={{ padding: "10px", fontWeight: "500" }}>Name</th>
-                <th style={{ fontWeight: "500" }}>Type</th>
-                <th style={{ textAlign: "right", fontWeight: "500", paddingRight: "20px" }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayItems && displayItems.length > 0 ? displayItems.map((item, i) => (
-                <tr 
-                  key={i} 
-                  draggable={item.type === 'file'}
-                  onDragStart={() => item.type === 'file' && onFileDragStart(item)}
-                  onDragOver={(e) => { if(item.type === 'folder') e.preventDefault(); }}
-                  onDrop={(e) => item.type === 'folder' && onFolderDrop(e, item.name)}
-                  style={{ 
-                    borderBottom: "1px solid " + theme.border, 
-                    // KEY CURSOR LOGIC HERE
-                    cursor: item.type === 'folder' ? "pointer" : "context-menu" 
-                  }} 
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = darkMode ? "#2d2e30" : "#f8f9fa"} 
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                >
-                  <td 
-                    style={{ padding: "12px 10px", color: theme.text, display: "flex", alignItems: "center", gap: "12px" }} 
-                    onClick={() => item.type === 'folder' && setCurrentPath(currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`)}
+        <div style={{
+          flex: 1, margin: "12px 16px 16px 4px", backgroundColor: theme.card,
+          borderRadius: "16px", display: "flex", flexDirection: "column", overflow: "hidden",
+        }}>
+          {/* Title row: breadcrumb + view toggle */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 6px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "22px", flexWrap: "wrap" }}>
+              {searchQuery ? (
+                <span>Results for “{searchQuery}”</span>
+              ) : (
+                <>
+                  <span
+                    onClick={() => setCurrentPath("/")}
+                    style={{ cursor: crumbs.length ? "pointer" : "default", padding: "2px 8px", borderRadius: "8px" }}
+                    onMouseEnter={(e) => { if (crumbs.length) e.currentTarget.style.backgroundColor = theme.tile; }}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                   >
-                    <span style={{ fontSize: "20px" }}>{item.type === 'folder' ? "📁" : "📄"}</span> {item.name}
-                  </td>
-                  <td style={{ fontSize: "13px", color: "#5f6368" }}>{item.type}</td>
-                  <td style={{ textAlign: "right", paddingRight: "20px" }}>
-                    {item.type === 'file' ? (
-                      <button
-                        onClick={(e) => setContextMenu({ x: e.clientX, y: e.clientY, file: item })}
-                        style={{ background: "none", border: "none", color: "#5f6368", fontSize: "18px", cursor: "pointer" }}
-                      >⋮</button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          const folderPath = currentPath === "/" ? `/${item.name}` : `${currentPath}/${item.name}`;
-                          if (window.confirm(`Delete folder "${item.name}" and all its contents?`)) {
-                            handleDeleteFolder(folderPath);
-                          }
-                        }}
-                        title="Delete folder"
-                        style={{ background: "none", border: "none", color: "#5f6368", fontSize: "16px", cursor: "pointer" }}
-                      >🗑</button>
-                    )}
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                    <td colSpan="3" style={{ textAlign: "center", padding: "40px", color: "#5f6368" }}>
-                        {searchQuery ? "No matching files found." : "Nothing to show here"}
-                    </td>
-                </tr>
+                    {view === "shared" ? "Shared" : "My Drive"}
+                  </span>
+                  {crumbs.map((c, i) => (
+                    <React.Fragment key={i}>
+                      <ChevronRight size={20} color={theme.subText} />
+                      <span
+                        onClick={() => setCurrentPath(crumbPath(i))}
+                        style={{ cursor: i < crumbs.length - 1 ? "pointer" : "default", padding: "2px 8px", borderRadius: "8px" }}
+                        onMouseEnter={(e) => { if (i < crumbs.length - 1) e.currentTarget.style.backgroundColor = theme.tile; }}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                      >
+                        {c}
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </>
               )}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Grid / list toggle */}
+            <div style={{ display: "flex", border: `1px solid ${theme.border}`, borderRadius: "999px", overflow: "hidden" }}>
+              {[["list", ListIcon], ["grid", LayoutGrid]].map(([mode, Icon]) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewMode(mode)}
+                  title={`${mode} view`}
+                  style={{
+                    border: "none", cursor: "pointer", padding: "7px 16px",
+                    backgroundColor: viewMode === mode ? theme.navActive : "transparent",
+                    color: viewMode === mode ? theme.navActiveText : theme.subText,
+                    display: "flex", alignItems: "center",
+                  }}
+                >
+                  <Icon size={16} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* CONTENT */}
+          <div style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
+            {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
+              <>
+                {folders.length > 0 && (
+                  <>
+                    {sectionLabel("Folders")}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px" }}>
+                      {folders.map((item) => {
+                        const key = `folder-${item.name}`;
+                        return (
+                          <div
+                            key={key}
+                            onClick={() => navigateInto(item.name)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => onFolderDrop(e, item.name)}
+                            onMouseEnter={() => setHoveredKey(key)}
+                            onMouseLeave={() => setHoveredKey(null)}
+                            style={{
+                              display: "flex", alignItems: "center", gap: "12px", padding: "10px 8px 10px 16px",
+                              borderRadius: "12px", cursor: "pointer",
+                              backgroundColor: hoveredKey === key ? theme.tileHover : theme.tile,
+                            }}
+                          >
+                            <Folder size={20} fill={theme.subText} color={theme.subText} style={{ flexShrink: 0 }} />
+                            <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                            <MoreButton item={item} visible={hoveredKey === key} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {fileItems.length > 0 && (
+                  <>
+                    {sectionLabel("Files")}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px" }}>
+                      {fileItems.map((item) => {
+                        const key = `file-${item.cid}`;
+                        const { Icon, color } = fileVisual(item.filename);
+                        return (
+                          <div
+                            key={key}
+                            draggable
+                            onDragStart={() => onFileDragStart(item)}
+                            onContextMenu={(e) => openMenuForFile(e, item)}
+                            onMouseEnter={() => setHoveredKey(key)}
+                            onMouseLeave={() => setHoveredKey(null)}
+                            style={{
+                              borderRadius: "12px", overflow: "hidden", cursor: "default",
+                              backgroundColor: hoveredKey === key ? theme.tileHover : theme.tile,
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 6px 10px 14px" }}>
+                              <Icon size={17} color={color} style={{ flexShrink: 0 }} />
+                              <span style={{ flex: 1, fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.filename}>{item.filename}</span>
+                              <MoreButton item={item} visible={hoveredKey === key} />
+                            </div>
+                            <div style={{
+                              margin: "0 8px 8px", height: "110px", borderRadius: "8px",
+                              backgroundColor: theme.card, display: "flex", alignItems: "center", justifyContent: "center",
+                            }}>
+                              <Icon size={44} color={color} strokeWidth={1.2} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              /* LIST VIEW */
+              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "8px" }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${theme.border}`, textAlign: "left", color: theme.subText, fontSize: "13px" }}>
+                    <th style={{ padding: "10px 8px", fontWeight: 500 }}>Name</th>
+                    <th style={{ fontWeight: 500 }}>Sharing</th>
+                    <th style={{ fontWeight: 500 }}>CID</th>
+                    <th style={{ width: "48px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayItems.map((item) => {
+                    const key = `${item.type}-${item.cid || item.name}`;
+                    const { Icon, color } = item.type === "file" ? fileVisual(item.filename) : { Icon: Folder, color: theme.subText };
+                    const sharedCount = Array.isArray(item.shared_with) ? item.shared_with.length : 0;
+                    return (
+                      <tr
+                        key={key}
+                        draggable={item.type === "file"}
+                        onDragStart={() => item.type === "file" && onFileDragStart(item)}
+                        onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
+                        onDrop={(e) => item.type === "folder" && onFolderDrop(e, item.name)}
+                        onContextMenu={(e) => item.type === "file" && openMenuForFile(e, item)}
+                        onMouseEnter={() => setHoveredKey(key)}
+                        onMouseLeave={() => setHoveredKey(null)}
+                        style={{
+                          borderBottom: `1px solid ${theme.border}`,
+                          backgroundColor: hoveredKey === key ? theme.hoverRow : "transparent",
+                          cursor: item.type === "folder" ? "pointer" : "default",
+                        }}
+                      >
+                        <td
+                          style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
+                          onClick={() => item.type === "folder" && navigateInto(item.name)}
+                        >
+                          <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
+                          {item.name}
+                        </td>
+                        <td style={{ fontSize: "13px", color: theme.subText }}>
+                          {item.type === "file" ? (item.is_owner ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you") : "Shared with me") : "—"}
+                        </td>
+                        <td style={{ fontSize: "12px", color: theme.subText, fontFamily: "monospace" }}>
+                          {item.cid ? `${item.cid.slice(0, 8)}…${item.cid.slice(-4)}` : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", paddingRight: "8px" }}>
+                          <MoreButton item={item} visible={hoveredKey === key} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </main>
 

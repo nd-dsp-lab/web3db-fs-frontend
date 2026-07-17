@@ -16,6 +16,23 @@ function App() {
   const [emptyFolders, setEmptyFolders] = useState(new Set());
   const [uploadMode, setUploadMode] = useState("single");
 
+  // --- THEME ---
+  // Follow the OS scheme until the user explicitly toggles, then persist.
+  const [themePref, setThemePref] = useState(() => localStorage.getItem("themePref") || "system");
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const darkMode = themePref === "system" ? systemDark : themePref === "dark";
+  const toggleTheme = () => {
+    const next = darkMode ? "light" : "dark";
+    setThemePref(next);
+    localStorage.setItem("themePref", next);
+  };
+
   // --- WALLET FUNCTIONALITY (Privy: email / Google / external wallet) ---
   const { ready, authenticated, login, logout, user } = usePrivy();
   const { wallets } = useWallets();
@@ -280,7 +297,9 @@ function App() {
 
   // --- DYNAMIC ITEM FILTERING ---
   const displayItems = searchQuery.length > 0
-    ? files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    ? files
+        .filter(f => (f.filename || f.name || "").toLowerCase().includes(searchQuery.toLowerCase()))
+        .map(f => ({ ...f, type: "file", name: f.filename || f.name }))
     : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
 
   // --- UPLOAD LOGIC ---
@@ -392,7 +411,9 @@ function App() {
       setView={setView}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
-      darkMode={window.matchMedia("(prefers-color-scheme: dark)").matches}
+      darkMode={darkMode}
+      toggleTheme={toggleTheme}
+      user={user}
     />
   );
 }
