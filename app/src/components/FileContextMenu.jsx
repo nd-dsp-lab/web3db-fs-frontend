@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw } from "lucide-react";
+import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info } from "lucide-react";
 
 // Recursively builds a flat list of { label, path } for all folders in the tree
 function collectFolders(node, parentPath = "") {
@@ -34,6 +34,7 @@ export default function FileContextMenu({
   onMove,
   onTrash,
   onRestore,
+  onDetails,
   inTrash,
   isStarred,
   onToggleStar,
@@ -109,6 +110,7 @@ export default function FileContextMenu({
         {(permissions & 4) !== 0 && (
           <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
         )}
+        <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); onDetails(file); }} />
         <div style={dividerStyle} />
         <Item
           icon={<Trash2 size={15} />} label="Delete forever" color="#d9534f"
@@ -125,6 +127,9 @@ export default function FileContextMenu({
       {(permissions & 4) !== 0 && (
         <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
       )}
+
+      {/* FILE DETAILS */}
+      <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); onDetails(file); }} />
 
       {/* STAR — anyone with the file in their list */}
       <Item

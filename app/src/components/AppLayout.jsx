@@ -3,15 +3,16 @@ import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw,
+  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
+import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
 
 // Pick an icon + accent color from the file extension, similar to how
 // Drive colors PDFs red, sheets green, etc.
-function fileVisual(filename = "") {
+export function fileVisual(filename = "") {
   const ext = filename.split(".").pop().toLowerCase();
   if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext))
     return { Icon: ImageIcon, color: "#188038" };
@@ -40,7 +41,9 @@ const hasThumbnail = (filename = "") => THUMBNAIL_EXTENSIONS.includes(filename.s
 // because the ngrok tunnel needs the skip-warning header.
 const thumbCache = new Map();
 
-function Thumbnail({ cid, filename, API_BASE_URL, fallback }) {
+export function hasThumbnailFor(filename) { return hasThumbnail(filename); }
+
+export function Thumbnail({ cid, filename, API_BASE_URL, fallback }) {
   const [src, setSrc] = useState(() => thumbCache.get(cid) || null);
   useEffect(() => {
     if (thumbCache.has(cid)) { setSrc(thumbCache.get(cid)); return; }
@@ -63,7 +66,7 @@ function Thumbnail({ cid, filename, API_BASE_URL, fallback }) {
   return <img src={src} alt={filename} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }} />;
 }
 
-function formatBytes(bytes) {
+export function formatBytes(bytes) {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
@@ -93,6 +96,8 @@ export default function AppLayout({
   const [shareFile, setShareFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
   const [selected, setSelected] = useState(new Set()); // file CIDs (folders not selectable)
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsFile, setDetailsFile] = useState(null);
 
   // Selection is scoped to what's on screen: clear on any navigation, and on Escape
   useEffect(() => { setSelected(new Set()); }, [view, currentPath, searchQuery]);
@@ -330,6 +335,14 @@ export default function AppLayout({
   const someSelected = selectedFiles.length > 0;
   const clearSelection = () => setSelected(new Set());
 
+  // While the panel is open it follows the selection; navigation away from
+  // the shown file's view clears it via displayItems refresh below.
+  useEffect(() => {
+    if (detailsOpen && selectedFiles.length > 0) setDetailsFile(selectedFiles[0]);
+  }, [detailsOpen, selected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openDetails = (file) => { setDetailsFile(file); setDetailsOpen(true); };
+
   // --- Reusable bits ---
   const NavItem = ({ id, icon: Icon, label }) => (
     <div
@@ -556,6 +569,7 @@ export default function AppLayout({
           )}
         </header>
 
+        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div
           onDragEnter={onDragEnter}
           onDragLeave={onDragLeave}
@@ -659,6 +673,21 @@ export default function AppLayout({
                 Empty trash
               </button>
             )}
+
+            <button
+              onClick={() => setDetailsOpen((o) => !o)}
+              title="File details"
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                color: detailsOpen ? "#1A73E8" : theme.subText,
+                width: "36px", height: "36px", borderRadius: "50%", display: "flex",
+                alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.tile}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            >
+              <Info size={19} strokeWidth={1.8} />
+            </button>
 
             {/* Grid / list toggle */}
             <div style={{ display: "flex", border: `1px solid ${theme.border}`, borderRadius: "999px", overflow: "hidden" }}>
@@ -863,6 +892,19 @@ export default function AppLayout({
             )}
           </div>
         </div>
+
+        {detailsOpen && (
+          <DetailsPanel
+            file={detailsFile}
+            account={account}
+            API_BASE_URL={API_BASE_URL}
+            onClose={() => setDetailsOpen(false)}
+            theme={theme}
+            toast={toast}
+            isStarred={detailsFile ? starred?.has(detailsFile.cid) : false}
+          />
+        )}
+        </div>
       </main>
 
       {bgMenu && (
@@ -932,6 +974,7 @@ export default function AppLayout({
           currentPath={currentPath}
           onClose={() => setContextMenu(null)}
           onDownload={downloadFile}
+          onDetails={openDetails}
           onShareOpen={(file) => setShareFile(file)}
           onDelete={handleDelete}
           onMove={handleMove}
