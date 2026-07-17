@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star } from "lucide-react";
+import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw } from "lucide-react";
 
 // Recursively builds a flat list of { label, path } for all folders in the tree
 function collectFolders(node, parentPath = "") {
@@ -32,6 +32,9 @@ export default function FileContextMenu({
   onShareOpen,
   onDelete,
   onMove,
+  onTrash,
+  onRestore,
+  inTrash,
   isStarred,
   onToggleStar,
 }) {
@@ -94,6 +97,26 @@ export default function FileContextMenu({
       {label}
     </div>
   );
+
+  // Trashed files get a minimal menu: restore or delete forever
+  if (inTrash) {
+    return (
+      <div ref={menuRef} style={menuStyle}>
+        <Item
+          icon={<RotateCcw size={15} />} label="Restore"
+          onClick={() => { onClose(); onRestore(file); }}
+        />
+        {(permissions & 4) !== 0 && (
+          <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
+        )}
+        <div style={dividerStyle} />
+        <Item
+          icon={<Trash2 size={15} />} label="Delete forever" color="#d9534f"
+          onClick={async () => { onClose(); await onDelete(file.cid); }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div ref={menuRef} style={menuStyle}>
@@ -211,16 +234,11 @@ export default function FileContextMenu({
 
       <div style={dividerStyle} />
 
-      {/* DELETE — owner only */}
+      {/* MOVE TO TRASH — owner only; the wallet signature acts as the confirm */}
       {is_owner && (
         <Item
-          icon={<Trash2 size={15} />} label="Delete" color="#d9534f"
-          onClick={async () => {
-            onClose();
-            const ok = window.confirm(`Delete "${file.filename}" (CID: ${file.cid})?`);
-            if (!ok) return;
-            await onDelete(file.cid);
-          }}
+          icon={<Trash2 size={15} />} label="Move to trash" color="#d9534f"
+          onClick={async () => { onClose(); await onTrash(file); }}
         />
       )}
     </div>

@@ -3,6 +3,13 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
 import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } from "./utils/helpers";
 
+// Trash is a hidden path prefix: "deleting" a file moves it under /.trash
+// (one on-chain move tx), restoring moves it back. No contract changes.
+const TRASH_PREFIX = "/.trash";
+const isTrashed = (f) => (f.folder_path || "/").startsWith(TRASH_PREFIX);
+const fullPathOf = (f) =>
+  (f.folder_path === "/" || !f.folder_path) ? `/${f.filename}` : `${f.folder_path}/${f.filename}`;
+
 function App() {
   // Replace with your actual backend URL
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
@@ -120,11 +127,12 @@ function App() {
       });
       const data = await response.json();
       const filesList = data.user_files || [];
-      
+
       setFiles(filesList);
       // The tree only holds files the user owns; files shared to them are
       // shown flat in the Shared view (their folder_path is the owner's).
-      setFileTree(buildFileTree(filesList.filter((f) => f.is_owner), emptyFolders));
+      // Trashed files live under /.trash and are excluded from the tree.
+      setFileTree(buildFileTree(filesList.filter((f) => f.is_owner && !isTrashed(f)), emptyFolders));
     } catch (err) {
       console.error("Error retrieving files:", err);
     }
@@ -295,8 +303,19 @@ function App() {
     }
   };
 
+  // Move a file into the hidden trash folder (keeps its original path under
+  // /.trash so restore can put it back exactly where it was).
+  const handleTrash = async (file) => {
+    await handleMove(file.cid, `${TRASH_PREFIX}${fullPathOf(file)}`);
+  };
+
+  const handleRestore = async (file) => {
+    const original = fullPathOf(file).slice(TRASH_PREFIX.length) || `/${file.filename}`;
+    await handleMove(file.cid, original);
+  };
+
   const handleDelete = async (cid) => {
-    if (!window.confirm("Are you sure you want to delete this file?")) return;
+    if (!window.confirm("Delete this file forever? This cannot be undone.")) return;
     try {
       const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
@@ -321,16 +340,19 @@ function App() {
 
   // --- DYNAMIC ITEM FILTERING ---
   const asFileItem = (f) => ({ ...f, type: "file", name: f.filename || f.name });
+  const active = files.filter(f => !isTrashed(f)); // trashed files only show in the Trash view
   const displayItems = searchQuery.length > 0
-    ? files
+    ? active
         .filter(f => (f.filename || f.name || "").toLowerCase().includes(searchQuery.toLowerCase()))
         .map(asFileItem)
     : view === "shared"
-    ? files.filter(f => !f.is_owner).map(asFileItem)
+    ? active.filter(f => !f.is_owner).map(asFileItem)
     : view === "recent"
-    ? [...files].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30).map(asFileItem)
+    ? [...active].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30).map(asFileItem)
     : view === "starred"
-    ? files.filter(f => starred.has(f.cid)).map(asFileItem)
+    ? active.filter(f => starred.has(f.cid)).map(asFileItem)
+    : view === "trash"
+    ? files.filter(f => f.is_owner && isTrashed(f)).map(asFileItem)
     : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
 
   // Storage usage: only files the user owns count against them
@@ -436,6 +458,8 @@ function App() {
       handleCreateFolder={handleCreateFolder}
       handleMove={handleMove}
       handleDelete={handleDelete}
+      handleTrash={handleTrash}
+      handleRestore={handleRestore}
       handleDeleteFolder={handleDeleteFolder}
       handleShare={handleShare}
       handleUnshare={handleUnshare}

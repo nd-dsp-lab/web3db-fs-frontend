@@ -42,11 +42,12 @@ function formatBytes(bytes) {
 
 const STORAGE_QUOTA = 1024 ** 3; // 1 GB nominal quota for the usage bar
 
-const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred" };
+const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred", trash: "Trash" };
 
 export default function AppLayout({
   account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
+  handleTrash, handleRestore,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
   starred, toggleStar, storageUsed,
@@ -124,7 +125,7 @@ export default function AppLayout({
 
   const confirmDeleteFolder = (folderName) => {
     const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
-    if (window.confirm(`Delete folder "${folderName}" and all its contents?`)) {
+    if (window.confirm(`Permanently delete folder "${folderName}" and all its contents? (Folders skip the trash.)`)) {
       handleDeleteFolder(folderPath);
     }
   };
@@ -187,6 +188,7 @@ export default function AppLayout({
           : view === "shared" ? "Nothing shared with you yet"
           : view === "recent" ? "No recent files"
           : view === "starred" ? "No starred files"
+          : view === "trash" ? "Trash is empty"
           : "This folder is empty"}
       </div>
       <div style={{ fontSize: "13px" }}>
@@ -194,6 +196,7 @@ export default function AppLayout({
           : view === "shared" ? "Files that others share with you will show up here."
           : view === "recent" ? "Files you upload or receive will show up here, newest first."
           : view === "starred" ? "Right-click a file and choose “Add to starred”."
+          : view === "trash" ? "Files you delete are kept here until you delete them forever."
           : "Use the New button to upload files or create folders."}
       </div>
     </div>
@@ -258,6 +261,7 @@ export default function AppLayout({
           <NavItem id="shared" icon={Users} label="Shared with me" />
           <NavItem id="recent" icon={Clock} label="Recent" />
           <NavItem id="starred" icon={Star} label="Starred" />
+          <NavItem id="trash" icon={Trash2} label="Trash" />
         </nav>
 
         {/* STORAGE INDICATOR */}
@@ -366,6 +370,25 @@ export default function AppLayout({
               )}
             </div>
 
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            {view === "trash" && (displayItems?.length || 0) > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm(`Permanently delete all ${displayItems.length} file(s) in trash? This cannot be undone.`)) {
+                    handleDeleteFolder("/.trash");
+                  }
+                }}
+                style={{
+                  border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: "999px",
+                  backgroundColor: "transparent", color: "#d93025", fontSize: "13px", fontWeight: 500,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.tile}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+              >
+                Empty trash
+              </button>
+            )}
+
             {/* Grid / list toggle */}
             <div style={{ display: "flex", border: `1px solid ${theme.border}`, borderRadius: "999px", overflow: "hidden" }}>
               {[["list", ListIcon], ["grid", LayoutGrid]].map(([mode, Icon]) => (
@@ -383,6 +406,7 @@ export default function AppLayout({
                   <Icon size={16} />
                 </button>
               ))}
+            </div>
             </div>
           </div>
 
@@ -571,6 +595,9 @@ export default function AppLayout({
           onShareOpen={(file) => setShareFile(file)}
           onDelete={handleDelete}
           onMove={handleMove}
+          onTrash={handleTrash}
+          onRestore={handleRestore}
+          inTrash={(contextMenu.file.folder_path || "/").startsWith("/.trash")}
           isStarred={starred?.has(contextMenu.file.cid)}
           onToggleStar={toggleStar}
         />
