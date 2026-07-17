@@ -32,6 +32,37 @@ function fileVisual(filename = "") {
   return { Icon: FileIcon, color: "#5f6368" };
 }
 
+const THUMBNAIL_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf"];
+const hasThumbnail = (filename = "") => THUMBNAIL_EXTENSIONS.includes(filename.split(".").pop().toLowerCase());
+
+// CID -> object URL (or "failed"); module-level so navigation and re-renders
+// never refetch. Thumbnails are fetched with fetch() rather than <img src>
+// because the ngrok tunnel needs the skip-warning header.
+const thumbCache = new Map();
+
+function Thumbnail({ cid, filename, API_BASE_URL, fallback }) {
+  const [src, setSrc] = useState(() => thumbCache.get(cid) || null);
+  useEffect(() => {
+    if (thumbCache.has(cid)) { setSrc(thumbCache.get(cid)); return; }
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "ngrok-skip-browser-warning": "true" } })
+      .then((r) => (r.ok && r.headers.get("content-type")?.startsWith("image/") ? r.blob() : Promise.reject()))
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        thumbCache.set(cid, url);
+        if (!cancelled) setSrc(url);
+      })
+      .catch(() => {
+        thumbCache.set(cid, "failed");
+        if (!cancelled) setSrc("failed");
+      });
+    return () => { cancelled = true; };
+  }, [cid, API_BASE_URL]);
+
+  if (!src || src === "failed") return fallback;
+  return <img src={src} alt={filename} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }} />;
+}
+
 function formatBytes(bytes) {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -718,10 +749,19 @@ export default function AppLayout({
                               <MoreButton item={item} visible={hoveredKey === key} />
                             </div>
                             <div style={{
-                              margin: "0 8px 8px", height: "110px", borderRadius: "8px",
+                              margin: "0 8px 8px", height: "110px", borderRadius: "8px", overflow: "hidden",
                               backgroundColor: theme.card, display: "flex", alignItems: "center", justifyContent: "center",
                             }}>
-                              <Icon size={44} color={color} strokeWidth={1.2} />
+                              {hasThumbnail(item.filename) ? (
+                                <Thumbnail
+                                  cid={item.cid}
+                                  filename={item.filename}
+                                  API_BASE_URL={API_BASE_URL}
+                                  fallback={<Icon size={44} color={color} strokeWidth={1.2} />}
+                                />
+                              ) : (
+                                <Icon size={44} color={color} strokeWidth={1.2} />
+                              )}
                             </div>
                           </div>
                         );
