@@ -15,6 +15,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [emptyFolders, setEmptyFolders] = useState(new Set());
   const [uploadMode, setUploadMode] = useState("single");
+  const [starred, setStarred] = useState(new Set());
 
   // --- THEME ---
   // Follow the OS scheme until the user explicitly toggles, then persist.
@@ -47,6 +48,27 @@ function App() {
   const account = ready && authenticated && wallet ? wallet.address : null;
 
   const connectWallet = () => login();
+
+  // --- STARRED (local per account; CIDs are stable so localStorage is enough) ---
+  useEffect(() => {
+    if (!account) { setStarred(new Set()); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(`starred:${account.toLowerCase()}`) || "[]");
+      setStarred(new Set(saved));
+    } catch {
+      setStarred(new Set());
+    }
+  }, [account]);
+
+  const toggleStar = (cid) => {
+    if (!account) return;
+    setStarred((prev) => {
+      const next = new Set(prev);
+      next.has(cid) ? next.delete(cid) : next.add(cid);
+      localStorage.setItem(`starred:${account.toLowerCase()}`, JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const disconnectWallet = async () => {
     await logout();
@@ -298,15 +320,21 @@ function App() {
   };
 
   // --- DYNAMIC ITEM FILTERING ---
+  const asFileItem = (f) => ({ ...f, type: "file", name: f.filename || f.name });
   const displayItems = searchQuery.length > 0
     ? files
         .filter(f => (f.filename || f.name || "").toLowerCase().includes(searchQuery.toLowerCase()))
-        .map(f => ({ ...f, type: "file", name: f.filename || f.name }))
+        .map(asFileItem)
     : view === "shared"
-    ? files
-        .filter(f => !f.is_owner)
-        .map(f => ({ ...f, type: "file", name: f.filename }))
+    ? files.filter(f => !f.is_owner).map(asFileItem)
+    : view === "recent"
+    ? [...files].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30).map(asFileItem)
+    : view === "starred"
+    ? files.filter(f => starred.has(f.cid)).map(asFileItem)
     : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
+
+  // Storage usage: only files the user owns count against them
+  const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
 
   // --- UPLOAD LOGIC ---
   const handleUpload = async (e) => {
@@ -420,6 +448,9 @@ function App() {
       darkMode={darkMode}
       toggleTheme={toggleTheme}
       user={user}
+      starred={starred}
+      toggleStar={toggleStar}
+      storageUsed={storageUsed}
     />
   );
 }

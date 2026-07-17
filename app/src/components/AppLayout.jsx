@@ -3,7 +3,7 @@ import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon,
+  Sun, Moon, Clock, Star, Cloud,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import PreviewModal from "./PreviewModal";
@@ -32,11 +32,24 @@ function fileVisual(filename = "") {
   return { Icon: FileIcon, color: "#5f6368" };
 }
 
+function formatBytes(bytes) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, i);
+  return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`;
+}
+
+const STORAGE_QUOTA = 1024 ** 3; // 1 GB nominal quota for the usage bar
+
+const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred" };
+
 export default function AppLayout({
   account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
+  starred, toggleStar, storageUsed,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedFile, setDraggedFile] = useState(null);
@@ -170,11 +183,17 @@ export default function AppLayout({
     <div style={{ textAlign: "center", padding: "80px 0", color: theme.subText }}>
       <Folder size={56} strokeWidth={1} style={{ opacity: 0.4, marginBottom: "12px" }} />
       <div style={{ fontSize: "16px", color: theme.text, marginBottom: "4px" }}>
-        {searchQuery ? "No matching files" : view === "shared" ? "Nothing shared with you yet" : "This folder is empty"}
+        {searchQuery ? "No matching files"
+          : view === "shared" ? "Nothing shared with you yet"
+          : view === "recent" ? "No recent files"
+          : view === "starred" ? "No starred files"
+          : "This folder is empty"}
       </div>
       <div style={{ fontSize: "13px" }}>
         {searchQuery ? "Try a different search term."
           : view === "shared" ? "Files that others share with you will show up here."
+          : view === "recent" ? "Files you upload or receive will show up here, newest first."
+          : view === "starred" ? "Right-click a file and choose “Add to starred”."
           : "Use the New button to upload files or create folders."}
       </div>
     </div>
@@ -237,7 +256,26 @@ export default function AppLayout({
         <nav>
           <NavItem id="my-drive" icon={HardDrive} label="My Drive" />
           <NavItem id="shared" icon={Users} label="Shared with me" />
+          <NavItem id="recent" icon={Clock} label="Recent" />
+          <NavItem id="starred" icon={Star} label="Starred" />
         </nav>
+
+        {/* STORAGE INDICATOR */}
+        <div style={{ marginTop: "auto", padding: "12px 16px 4px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px", fontSize: "14px", marginBottom: "10px" }}>
+            <Cloud size={18} strokeWidth={1.8} color={theme.subText} />
+            Storage
+          </div>
+          <div style={{ height: "4px", borderRadius: "999px", backgroundColor: theme.tile, overflow: "hidden", marginBottom: "8px" }}>
+            <div style={{
+              height: "100%", borderRadius: "999px", backgroundColor: "#1A73E8",
+              width: `${Math.min(100, (storageUsed / STORAGE_QUOTA) * 100)}%`, minWidth: storageUsed > 0 ? "2px" : 0,
+            }} />
+          </div>
+          <div style={{ fontSize: "12px", color: theme.subText }}>
+            {formatBytes(storageUsed)} of {formatBytes(STORAGE_QUOTA)} used
+          </div>
+        </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
@@ -309,9 +347,9 @@ export default function AppLayout({
                     onMouseEnter={(e) => { if (crumbs.length) e.currentTarget.style.backgroundColor = theme.tile; }}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                   >
-                    {view === "shared" ? "Shared with me" : "My Drive"}
+                    {VIEW_TITLES[view] || "My Drive"}
                   </span>
-                  {view !== "shared" && crumbs.map((c, i) => (
+                  {view === "my-drive" && crumbs.map((c, i) => (
                     <React.Fragment key={i}>
                       <ChevronRight size={20} color={theme.subText} />
                       <span
@@ -406,6 +444,7 @@ export default function AppLayout({
                             <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 6px 10px 14px" }}>
                               <Icon size={17} color={color} style={{ flexShrink: 0 }} />
                               <span style={{ flex: 1, fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.filename}>{item.filename}</span>
+                              {starred?.has(item.cid) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
                               <MoreButton item={item} visible={hoveredKey === key} />
                             </div>
                             <div style={{
@@ -428,6 +467,8 @@ export default function AppLayout({
                   <tr style={{ borderBottom: `1px solid ${theme.border}`, textAlign: "left", color: theme.subText, fontSize: "13px" }}>
                     <th style={{ padding: "10px 8px", fontWeight: 500 }}>Name</th>
                     <th style={{ fontWeight: 500 }}>Sharing</th>
+                    <th style={{ fontWeight: 500 }}>Uploaded</th>
+                    <th style={{ fontWeight: 500 }}>Size</th>
                     <th style={{ fontWeight: 500 }}>CID</th>
                     <th style={{ width: "48px" }}></th>
                   </tr>
@@ -459,6 +500,7 @@ export default function AppLayout({
                         >
                           <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
                           {item.name}
+                          {item.type === "file" && starred?.has(item.cid) && <Star size={13} fill="#F29900" color="#F29900" />}
                         </td>
                         <td style={{ fontSize: "13px", color: theme.subText }}>
                           {item.type === "file"
@@ -466,6 +508,14 @@ export default function AppLayout({
                               ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you")
                               : (item.owner ? `Shared by ${item.owner.slice(0, 6)}...${item.owner.slice(-4)}` : "Shared with me"))
                             : "—"}
+                        </td>
+                        <td style={{ fontSize: "13px", color: theme.subText }}>
+                          {item.type === "file" && item.timestamp
+                            ? new Date(item.timestamp * 1000).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+                            : "—"}
+                        </td>
+                        <td style={{ fontSize: "13px", color: theme.subText }}>
+                          {item.type === "file" && item.size ? formatBytes(item.size) : "—"}
                         </td>
                         <td style={{ fontSize: "12px", color: theme.subText, fontFamily: "monospace" }}>
                           {item.cid ? `${item.cid.slice(0, 8)}…${item.cid.slice(-4)}` : "—"}
@@ -521,6 +571,8 @@ export default function AppLayout({
           onShareOpen={(file) => setShareFile(file)}
           onDelete={handleDelete}
           onMove={handleMove}
+          isStarred={starred?.has(contextMenu.file.cid)}
+          onToggleStar={toggleStar}
         />
       )}
     </div>
