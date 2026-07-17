@@ -100,7 +100,9 @@ function App() {
       const filesList = data.user_files || [];
       
       setFiles(filesList);
-      setFileTree(buildFileTree(filesList, emptyFolders));
+      // The tree only holds files the user owns; files shared to them are
+      // shown flat in the Shared view (their folder_path is the owner's).
+      setFileTree(buildFileTree(filesList.filter((f) => f.is_owner), emptyFolders));
     } catch (err) {
       console.error("Error retrieving files:", err);
     }
@@ -300,6 +302,10 @@ function App() {
     ? files
         .filter(f => (f.filename || f.name || "").toLowerCase().includes(searchQuery.toLowerCase()))
         .map(f => ({ ...f, type: "file", name: f.filename || f.name }))
+    : view === "shared"
+    ? files
+        .filter(f => !f.is_owner)
+        .map(f => ({ ...f, type: "file", name: f.filename }))
     : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
 
   // --- UPLOAD LOGIC ---

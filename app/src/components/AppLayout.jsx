@@ -168,10 +168,12 @@ export default function AppLayout({
     <div style={{ textAlign: "center", padding: "80px 0", color: theme.subText }}>
       <Folder size={56} strokeWidth={1} style={{ opacity: 0.4, marginBottom: "12px" }} />
       <div style={{ fontSize: "16px", color: theme.text, marginBottom: "4px" }}>
-        {searchQuery ? "No matching files" : "This folder is empty"}
+        {searchQuery ? "No matching files" : view === "shared" ? "Nothing shared with you yet" : "This folder is empty"}
       </div>
       <div style={{ fontSize: "13px" }}>
-        {searchQuery ? "Try a different search term." : "Use the New button to upload files or create folders."}
+        {searchQuery ? "Try a different search term."
+          : view === "shared" ? "Files that others share with you will show up here."
+          : "Use the New button to upload files or create folders."}
       </div>
     </div>
   );
@@ -232,7 +234,7 @@ export default function AppLayout({
 
         <nav>
           <NavItem id="my-drive" icon={HardDrive} label="My Drive" />
-          <NavItem id="shared" icon={Users} label="Shared" />
+          <NavItem id="shared" icon={Users} label="Shared with me" />
         </nav>
       </aside>
 
@@ -305,9 +307,9 @@ export default function AppLayout({
                     onMouseEnter={(e) => { if (crumbs.length) e.currentTarget.style.backgroundColor = theme.tile; }}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
                   >
-                    {view === "shared" ? "Shared" : "My Drive"}
+                    {view === "shared" ? "Shared with me" : "My Drive"}
                   </span>
-                  {crumbs.map((c, i) => (
+                  {view !== "shared" && crumbs.map((c, i) => (
                     <React.Fragment key={i}>
                       <ChevronRight size={20} color={theme.subText} />
                       <span
@@ -457,7 +459,11 @@ export default function AppLayout({
                           {item.name}
                         </td>
                         <td style={{ fontSize: "13px", color: theme.subText }}>
-                          {item.type === "file" ? (item.is_owner ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you") : "Shared with me") : "—"}
+                          {item.type === "file"
+                            ? (item.is_owner
+                              ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you")
+                              : (item.owner ? `Shared by ${item.owner.slice(0, 6)}...${item.owner.slice(-4)}` : "Shared with me"))
+                            : "—"}
                         </td>
                         <td style={{ fontSize: "12px", color: theme.subText, fontFamily: "monospace" }}>
                           {item.cid ? `${item.cid.slice(0, 8)}…${item.cid.slice(-4)}` : "—"}
