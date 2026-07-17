@@ -1,9 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon, Clock, Star, Cloud,
+  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import PreviewModal from "./PreviewModal";
@@ -50,7 +50,8 @@ export default function AppLayout({
   handleTrash, handleRestore,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
-  starred, toggleStar, storageUsed,
+  starred, toggleStar, toggleStarMany, storageUsed, toast,
+  handleBulkTrash, handleBulkRestore, handleBulkDelete,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedFile, setDraggedFile] = useState(null);
@@ -59,10 +60,27 @@ export default function AppLayout({
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
+  const [selected, setSelected] = useState(new Set()); // file CIDs (folders not selectable)
+
+  // Selection is scoped to what's on screen: clear on any navigation, and on Escape
+  useEffect(() => { setSelected(new Set()); }, [view, currentPath, searchQuery]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") setSelected(new Set()); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  const toggleSelect = (cid) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(cid) ? next.delete(cid) : next.add(cid);
+      return next;
+    });
+  };
 
   const downloadFile = async (file) => {
     if (!account) {
-      alert("Connect wallet first");
+      toast.info("Sign in first");
       return;
     }
     try {
@@ -79,8 +97,20 @@ export default function AppLayout({
       link.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert(err.message || "Download failed");
+      toast.error(err.message || "Download failed");
     }
+  };
+
+  // Sequential bulk download with a single progress toast
+  const downloadMany = async (items) => {
+    const tId = toast.loading(`Downloading 0/${items.length}…`);
+    let done = 0;
+    for (const f of items) {
+      toast.update(tId, `Downloading ${done + 1}/${items.length}…`, "loading");
+      await downloadFile(f); // errors toast individually inside
+      done++;
+    }
+    toast.update(tId, `Downloaded ${done} file(s)`, "success");
   };
 
   // Google Drive palette (light) with a matching dark variant
@@ -141,6 +171,9 @@ export default function AppLayout({
 
   const folders = (displayItems || []).filter((i) => i.type === "folder");
   const fileItems = (displayItems || []).filter((i) => i.type === "file");
+  const selectedFiles = fileItems.filter((f) => selected.has(f.cid));
+  const someSelected = selectedFiles.length > 0;
+  const clearSelection = () => setSelected(new Set());
 
   // --- Reusable bits ---
   const NavItem = ({ id, icon: Icon, label }) => (
@@ -204,6 +237,37 @@ export default function AppLayout({
 
   const sectionLabel = (text) => (
     <div style={{ fontSize: "13px", fontWeight: 500, color: theme.subText, margin: "18px 4px 10px" }}>{text}</div>
+  );
+
+  // Round icon button for the selection toolbar
+  const ToolbarButton = ({ icon: Icon, title, onClick, color }) => (
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        background: "none", border: "none", cursor: "pointer", color: color || theme.text,
+        width: "38px", height: "38px", borderRadius: "50%", display: "flex",
+        alignItems: "center", justifyContent: "center", flexShrink: 0,
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.tile}
+      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+    >
+      <Icon size={19} strokeWidth={1.8} />
+    </button>
+  );
+
+  // Checkbox used on tiles and rows; visible on hover or while selecting
+  const SelectBox = ({ cid, visible }) => (
+    <input
+      type="checkbox"
+      checked={selected.has(cid)}
+      onChange={() => toggleSelect(cid)}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        width: "16px", height: "16px", accentColor: "#1A73E8", cursor: "pointer",
+        flexShrink: 0, opacity: visible || selected.has(cid) ? 1 : 0, transition: "opacity 0.1s",
+      }}
+    />
   );
 
   return (
@@ -340,6 +404,34 @@ export default function AppLayout({
         }}>
           {/* Title row: breadcrumb + view toggle */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px 6px" }}>
+            {someSelected ? (
+              /* SELECTION TOOLBAR — replaces the breadcrumb while files are selected */
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <ToolbarButton icon={X} title="Clear selection" onClick={clearSelection} />
+                <span style={{ fontSize: "15px", fontWeight: 500, marginRight: "10px" }}>
+                  {selectedFiles.length} selected
+                </span>
+                {view !== "trash" && (
+                  <ToolbarButton
+                    icon={Star}
+                    title={selectedFiles.every((f) => starred?.has(f.cid)) ? "Remove from starred" : "Add to starred"}
+                    onClick={() => toggleStarMany(selectedFiles.map((f) => f.cid))}
+                  />
+                )}
+                <ToolbarButton icon={Download} title="Download" onClick={() => { downloadMany(selectedFiles); clearSelection(); }} />
+                {view === "trash" ? (
+                  <>
+                    <ToolbarButton icon={RotateCcw} title="Restore" onClick={() => { handleBulkRestore(selectedFiles); clearSelection(); }} />
+                    <ToolbarButton icon={Trash2} title="Delete forever" color="#d93025" onClick={() => { handleBulkDelete(selectedFiles); clearSelection(); }} />
+                  </>
+                ) : (
+                  <ToolbarButton
+                    icon={Trash2} title="Move to trash" color="#d93025"
+                    onClick={() => { handleBulkTrash(selectedFiles.filter((f) => f.is_owner)); clearSelection(); }}
+                  />
+                )}
+              </div>
+            ) : (
             <div style={{ display: "flex", alignItems: "center", gap: "2px", fontSize: "22px", flexWrap: "wrap" }}>
               {searchQuery ? (
                 <span>Results for “{searchQuery}”</span>
@@ -369,6 +461,7 @@ export default function AppLayout({
                 </>
               )}
             </div>
+            )}
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             {view === "trash" && (displayItems?.length || 0) > 0 && (
@@ -466,6 +559,7 @@ export default function AppLayout({
                             }}
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 6px 10px 14px" }}>
+                              <SelectBox cid={item.cid} visible={hoveredKey === key || someSelected} />
                               <Icon size={17} color={color} style={{ flexShrink: 0 }} />
                               <span style={{ flex: 1, fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.filename}>{item.filename}</span>
                               {starred?.has(item.cid) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
@@ -489,6 +583,21 @@ export default function AppLayout({
               <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "8px" }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${theme.border}`, textAlign: "left", color: theme.subText, fontSize: "13px" }}>
+                    <th style={{ width: "32px", padding: "10px 0 10px 8px" }}>
+                      {fileItems.length > 0 && (
+                        <input
+                          type="checkbox"
+                          title="Select all"
+                          checked={selectedFiles.length === fileItems.length}
+                          onChange={() =>
+                            setSelected(selectedFiles.length === fileItems.length
+                              ? new Set()
+                              : new Set(fileItems.map((f) => f.cid)))
+                          }
+                          style={{ width: "16px", height: "16px", accentColor: "#1A73E8", cursor: "pointer" }}
+                        />
+                      )}
+                    </th>
                     <th style={{ padding: "10px 8px", fontWeight: 500 }}>Name</th>
                     <th style={{ fontWeight: 500 }}>Sharing</th>
                     <th style={{ fontWeight: 500 }}>Uploaded</th>
@@ -518,6 +627,9 @@ export default function AppLayout({
                           cursor: "pointer",
                         }}
                       >
+                        <td style={{ padding: "10px 0 10px 8px" }}>
+                          {item.type === "file" && <SelectBox cid={item.cid} visible={hoveredKey === key || someSelected} />}
+                        </td>
                         <td
                           style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
                           onClick={() => item.type === "folder" ? navigateInto(item.name) : setPreviewFile(item)}

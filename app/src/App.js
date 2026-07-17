@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
+import ToastStack from "./components/Toast";
 import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } from "./utils/helpers";
 
 // Trash is a hidden path prefix: "deleting" a file moves it under /.trash
@@ -23,6 +24,29 @@ function App() {
   const [emptyFolders, setEmptyFolders] = useState(new Set());
   const [uploadMode, setUploadMode] = useState("single");
   const [starred, setStarred] = useState(new Set());
+
+  // --- TOASTS ---
+  const [toasts, setToasts] = useState([]);
+  const toastSeq = useRef(0);
+  const dismissToast = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const pushToast = useCallback((message, type = "info", opts = {}) => {
+    const id = ++toastSeq.current;
+    setToasts((t) => [...t, { id, message, type, action: opts.action }]);
+    if (type !== "loading") setTimeout(() => dismissToast(id), opts.duration || 5000);
+    return id;
+  }, [dismissToast]);
+  const updateToast = useCallback((id, message, type, opts = {}) => {
+    setToasts((t) => t.map((x) => (x.id === id ? { ...x, message, type, action: opts.action } : x)));
+    if (type !== "loading") setTimeout(() => dismissToast(id), opts.duration || 5000);
+  }, [dismissToast]);
+  const toast = {
+    success: (m, o) => pushToast(m, "success", o),
+    error: (m, o) => pushToast(m, "error", o),
+    info: (m, o) => pushToast(m, "info", o),
+    loading: (m) => pushToast(m, "loading"),
+    update: updateToast,
+    dismiss: dismissToast,
+  };
 
   // --- THEME ---
   // Follow the OS scheme until the user explicitly toggles, then persist.
@@ -145,13 +169,15 @@ function App() {
   // --- TRANSACTION SIGNING ---
   // Backend endpoints only *prepare* transactions; the user must sign and
   // broadcast via MetaMask, then the backend verifies the receipt on-chain.
-  const signAndVerifyTransaction = async (transaction) => {
+  const signAndVerifyTransaction = async (transaction, tId) => {
     const provider = await getProvider();
     await ensureSepolia(provider);
+    if (tId) toast.update(tId, "Waiting for signature…", "loading");
     const txHash = await provider.request({
       method: "eth_sendTransaction",
       params: [normalizeTxFields(transaction)],
     });
+    if (tId) toast.update(tId, "Confirming on-chain…", "loading");
 
     const verifyResponse = await fetch(`${API_BASE_URL}/verify-upload`, {
       method: "POST",
@@ -168,13 +194,13 @@ function App() {
     return txHash;
   };
 
-  const reportTxError = (action, err) => {
+  const reportTxError = (action, err, tId) => {
     console.error(`${action} error:`, err);
-    if (err?.code === 4001) {
-      alert("Transaction rejected by user");
-    } else {
-      alert(`${action} failed: ` + (err?.message || err?.reason || String(err)));
-    }
+    const rejected = err?.code === 4001;
+    const msg = rejected ? "Transaction rejected" : `${action} failed: ${err?.message || err?.reason || String(err)}`;
+    const type = rejected ? "info" : "error";
+    if (tId) toast.update(tId, msg, type);
+    else pushToast(msg, type);
   };
 
   // --- FILE ACTIONS (SHARE, UNSHARE, MOVE & DELETE) ---
@@ -198,6 +224,7 @@ function App() {
 
   const handleShare = async (cid, recipient, filename) => {
     if (!account) return;
+    let tId;
     try {
       let toAddress = recipient.trim();
       const recipientEmail = toAddress.includes("@") ? toAddress.toLowerCase() : null;
@@ -210,6 +237,7 @@ function App() {
         if (!window.confirm(`Share with ${toAddress} (${short})?${note}`)) return;
         toAddress = resolved.address;
       }
+      tId = toast.loading("Preparing share…");
       const response = await fetch(`${API_BASE_URL}/share`, {
         method: "POST",
         headers: {
@@ -221,10 +249,11 @@ function App() {
       const data = await response.json();
       if (!data.transaction) {
         console.error("Share prepare failed:", data);
-        alert("Share failed. Check console for details.");
+        toast.update(tId, "Share failed. Check console for details.", "error");
         return;
       }
-      await signAndVerifyTransaction(data.transaction);
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       // Best-effort email notification once the share is on-chain
       if (recipientEmail) {
         const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
@@ -247,13 +276,15 @@ function App() {
       }
       retrieveFiles();
     } catch (err) {
-      reportTxError("Share", err);
+      reportTxError("Share", err, tId);
     }
   };
 
   const handleUnshare = async (cid, toAddress) => {
     if (!account) return;
+    let tId;
     try {
+      tId = toast.loading("Revoking access…");
       const response = await fetch(`${API_BASE_URL}/unshare`, {
         method: "POST",
         headers: {
@@ -265,57 +296,86 @@ function App() {
       const data = await response.json();
       if (!data.transaction) {
         console.error("Unshare prepare failed:", data);
-        alert("Unshare failed. Check console for details.");
+        toast.update(tId, "Unshare failed. Check console for details.", "error");
         return;
       }
-      await signAndVerifyTransaction(data.transaction);
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, "Access revoked", "success");
       retrieveFiles();
     } catch (err) {
-      reportTxError("Unshare", err);
+      reportTxError("Unshare", err, tId);
     }
+  };
+
+  // Prepare + sign a single move; shared by rename, drag-move, trash,
+  // restore and their bulk variants. Throws on failure — callers own toasts.
+  const moveTx = async (cid, newPath, tId) => {
+    const response = await fetch(`${API_BASE_URL}/move`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true"
+      },
+      body: JSON.stringify({
+        user_address: account,
+        cid: cid,
+        new_path: newPath
+      })
+    });
+    const data = await response.json();
+    if (!data.transaction) {
+      console.error("Move prepare failed:", data);
+      throw new Error("Could not prepare the move transaction");
+    }
+    await signAndVerifyTransaction(data.transaction, tId);
   };
 
   const handleMove = async (cid, newPath) => {
     if (!account) return;
+    const tId = toast.loading("Moving…");
     try {
-      const response = await fetch(`${API_BASE_URL}/move`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: JSON.stringify({
-          user_address: account,
-          cid: cid,
-          new_path: newPath
-        })
-      });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Move prepare failed:", data);
-        alert("Move failed. Check console for details.");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction);
+      await moveTx(cid, newPath, tId);
+      toast.update(tId, "Moved", "success");
       retrieveFiles();
     } catch (err) {
-      reportTxError("Move", err);
+      reportTxError("Move", err, tId);
     }
   };
 
   // Move a file into the hidden trash folder (keeps its original path under
   // /.trash so restore can put it back exactly where it was).
   const handleTrash = async (file) => {
-    await handleMove(file.cid, `${TRASH_PREFIX}${fullPathOf(file)}`);
+    if (!account) return;
+    const tId = toast.loading("Moving to trash…");
+    try {
+      await moveTx(file.cid, `${TRASH_PREFIX}${fullPathOf(file)}`, tId);
+      const trashedFile = { ...file, folder_path: `${TRASH_PREFIX}${file.folder_path === "/" || !file.folder_path ? "" : file.folder_path}` };
+      toast.update(tId, `"${file.filename}" moved to trash`, "success", {
+        duration: 8000,
+        action: { label: "Undo", onClick: () => handleRestore(trashedFile) },
+      });
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Move to trash", err, tId);
+    }
   };
 
   const handleRestore = async (file) => {
-    const original = fullPathOf(file).slice(TRASH_PREFIX.length) || `/${file.filename}`;
-    await handleMove(file.cid, original);
+    if (!account) return;
+    const tId = toast.loading("Restoring…");
+    try {
+      const original = fullPathOf(file).slice(TRASH_PREFIX.length) || `/${file.filename}`;
+      await moveTx(file.cid, original, tId);
+      toast.update(tId, `"${file.filename}" restored`, "success");
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Restore", err, tId);
+    }
   };
 
   const handleDelete = async (cid) => {
     if (!window.confirm("Delete this file forever? This cannot be undone.")) return;
+    const tId = toast.loading("Deleting…");
     try {
       const response = await fetch(`${API_BASE_URL}/delete`, {
         method: "POST",
@@ -328,14 +388,81 @@ function App() {
       const data = await response.json();
       if (!data.transaction) {
         console.error("Delete prepare failed:", data);
-        alert("Delete failed. Check console for details.");
+        toast.update(tId, "Delete failed. Check console for details.", "error");
         return;
       }
-      await signAndVerifyTransaction(data.transaction);
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, "File deleted forever", "success");
       retrieveFiles();
     } catch (err) {
-      reportTxError("Delete", err);
+      reportTxError("Delete", err, tId);
     }
+  };
+
+  // --- BULK ACTIONS (multi-select) ---
+  // No batch move on the contract, so bulk trash/restore sign one tx per
+  // file, sequentially, with progress in a single loading toast.
+  const runSequentialMoves = async (items, label, pathFor) => {
+    const tId = toast.loading(`${label} 0/${items.length}…`);
+    let done = 0;
+    try {
+      for (const f of items) {
+        toast.update(tId, `${label} ${done + 1}/${items.length}…`, "loading");
+        await moveTx(f.cid, pathFor(f)); // no tId: keep the progress label during signing
+        done++;
+      }
+      toast.update(tId, `${label.replace(/ing/, "ed")} ${done} file(s)`, "success");
+    } catch (err) {
+      console.error("Bulk move error:", err);
+      const msg = err?.code === 4001 ? "stopped — transaction rejected" : `failed: ${err?.message || err}`;
+      toast.update(tId, `${done}/${items.length} done, then ${msg}`, done > 0 ? "info" : "error");
+    }
+    if (done > 0) retrieveFiles();
+  };
+
+  const handleBulkTrash = (items) =>
+    runSequentialMoves(items, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
+
+  const handleBulkRestore = (items) =>
+    runSequentialMoves(items, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length) || `/${f.filename}`);
+
+  // Bulk delete-forever is a single cleanFolder(cids) transaction
+  const handleBulkDelete = async (items) => {
+    if (!window.confirm(`Permanently delete ${items.length} file(s)? This cannot be undone.`)) return;
+    const tId = toast.loading(`Deleting ${items.length} file(s)…`);
+    try {
+      const response = await fetch(`${API_BASE_URL}/delete-batch`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true"
+        },
+        body: JSON.stringify({ user_address: account, cids: items.map((f) => f.cid) })
+      });
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Batch delete prepare failed:", data);
+        toast.update(tId, "Delete failed. Check console for details.", "error");
+        return;
+      }
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, `Deleted ${items.length} file(s) forever`, "success");
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Delete", err, tId);
+    }
+  };
+
+  // Bulk star: if every selected file is already starred, unstar them all
+  const toggleStarMany = (cids) => {
+    if (!account) return;
+    setStarred((prev) => {
+      const next = new Set(prev);
+      const allStarred = cids.every((c) => next.has(c));
+      cids.forEach((c) => (allStarred ? next.delete(c) : next.add(c)));
+      localStorage.setItem(`starred:${account.toLowerCase()}`, JSON.stringify([...next]));
+      return next;
+    });
   };
 
   // --- DYNAMIC ITEM FILTERING ---
@@ -362,7 +489,8 @@ function App() {
   const handleUpload = async (e) => {
     const inputFiles = e.target.files;
     if (!inputFiles?.length || !account) return;
-    
+    const tId = toast.loading(inputFiles.length > 1 ? `Uploading ${inputFiles.length} files to IPFS…` : `Uploading "${inputFiles[0].name}"…`);
+
     const formData = new FormData();
     formData.append("user_address", account);
 
@@ -390,22 +518,25 @@ function App() {
       if (!response.ok || !data.transaction) {
         console.error("Upload prepare failed:", data);
         if (data.reason === "file_already_exists") {
-          alert("This exact file already exists in the system (identical content). It is owned by " + data.owner);
+          toast.update(tId, "This exact file already exists (identical content), owned by " + data.owner, "error", { duration: 8000 });
         } else {
-          alert("Upload failed. Check console for details.");
+          toast.update(tId, "Upload failed. Check console for details.", "error");
         }
         return;
       }
       e.target.value = null;
-      await signAndVerifyTransaction(data.transaction);
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, inputFiles.length > 1 ? `Uploaded ${inputFiles.length} files` : `Uploaded "${inputFiles[0].name}"`, "success");
       retrieveFiles();
     } catch (err) {
-      reportTxError("Upload", err);
+      reportTxError("Upload", err, tId);
     }
   };
 
   const handleDeleteFolder = async (folderPath) => {
     if (!account) return;
+    const isTrashPurge = folderPath === TRASH_PREFIX;
+    const tId = toast.loading(isTrashPurge ? "Emptying trash…" : "Deleting folder…");
     try {
       const response = await fetch(`${API_BASE_URL}/delete-folder`, {
         method: "POST",
@@ -418,14 +549,15 @@ function App() {
       const data = await response.json();
       if (data.error) {
         console.error("Delete folder prepare failed:", data);
-        alert("Delete folder failed. Check console for details.");
+        toast.update(tId, "Delete folder failed. Check console for details.", "error");
         return;
       }
       // Folders with on-chain files need a signed batch delete; empty
       // folders exist only in local state and have no transaction.
       if (data.transaction) {
-        await signAndVerifyTransaction(data.transaction);
+        await signAndVerifyTransaction(data.transaction, tId);
       }
+      toast.update(tId, isTrashPurge ? "Trash emptied" : "Folder deleted", "success");
       setEmptyFolders(prev => {
         const next = new Set();
         for (const p of prev) {
@@ -435,7 +567,7 @@ function App() {
       });
       retrieveFiles();
     } catch (err) {
-      reportTxError("Delete folder", err);
+      reportTxError("Delete folder", err, tId);
     }
   };
 
@@ -446,7 +578,9 @@ function App() {
   };
 
   return (
-    <AppLayout 
+    <>
+    <ToastStack toasts={toasts} dismiss={dismissToast} darkMode={darkMode} />
+    <AppLayout
       account={account}
       connectWallet={connectWallet}
       disconnectWallet={disconnectWallet}
@@ -474,8 +608,14 @@ function App() {
       user={user}
       starred={starred}
       toggleStar={toggleStar}
+      toggleStarMany={toggleStarMany}
       storageUsed={storageUsed}
+      toast={toast}
+      handleBulkTrash={handleBulkTrash}
+      handleBulkRestore={handleBulkRestore}
+      handleBulkDelete={handleBulkDelete}
     />
+    </>
   );
 }
 
