@@ -361,7 +361,7 @@ export default function AppLayout({
           : view === "recent" ? "Files you upload or receive will show up here, newest first."
           : view === "starred" ? "Right-click a file and choose “Add to starred”."
           : view === "trash" ? "Files you delete are kept here until you delete them forever."
-          : "Use the New button to upload files or create folders."}
+          : "Drop files here or use the New button to upload files."}
       </div>
     </div>
   );

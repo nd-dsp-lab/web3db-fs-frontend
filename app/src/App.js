@@ -80,6 +80,24 @@ function App() {
 
   const connectWallet = () => login();
 
+  // --- EMPTY FOLDERS (local per account) ---
+  // Folders only exist on-chain as file-path prefixes, so an empty folder
+  // has no on-chain record. Persist them locally until a file lands in them.
+  useEffect(() => {
+    if (!account) { setEmptyFolders(new Set()); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(`emptyFolders:${account.toLowerCase()}`) || "[]");
+      setEmptyFolders(new Set(saved));
+    } catch {
+      setEmptyFolders(new Set());
+    }
+  }, [account]);
+
+  const persistEmptyFolders = (next) => {
+    if (account) localStorage.setItem(`emptyFolders:${account.toLowerCase()}`, JSON.stringify([...next]));
+    return next;
+  };
+
   // --- STARRED (local per account; CIDs are stable so localStorage is enough) ---
   useEffect(() => {
     if (!account) { setStarred(new Set()); return; }
@@ -606,7 +624,7 @@ function App() {
         for (const p of prev) {
           if (p !== folderPath && !p.startsWith(folderPath + "/")) next.add(p);
         }
-        return next;
+        return persistEmptyFolders(next);
       });
       retrieveFiles();
     } catch (err) {
@@ -617,7 +635,7 @@ function App() {
   // --- FOLDER CREATION ---
   const handleCreateFolder = (name) => {
     const newPath = currentPath === "/" ? `/${name}` : `${currentPath}/${name}`;
-    setEmptyFolders(prev => new Set(prev).add(newPath));
+    setEmptyFolders(prev => persistEmptyFolders(new Set(prev).add(newPath)));
   };
 
   return (
