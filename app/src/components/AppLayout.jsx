@@ -6,6 +6,7 @@ import {
   Sun, Moon,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
+import PreviewModal from "./PreviewModal";
 
 // Pick an icon + accent color from the file extension, similar to how
 // Drive colors PDFs red, sheets green, etc.
@@ -40,6 +41,7 @@ export default function AppLayout({
   const [draggedFile, setDraggedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
+  const [previewFile, setPreviewFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
 
   const downloadFile = async (file) => {
@@ -145,7 +147,7 @@ export default function AppLayout({
 
   const MoreButton = ({ item, visible }) => (
     <button
-      onClick={(e) => item.type === "file" ? openMenuForFile(e, item) : confirmDeleteFolder(item.name)}
+      onClick={(e) => { e.stopPropagation(); item.type === "file" ? openMenuForFile(e, item) : confirmDeleteFolder(item.name); }}
       title={item.type === "file" ? "More actions" : "Delete folder"}
       style={{
         background: "none", border: "none", cursor: "pointer", color: theme.subText,
@@ -388,11 +390,12 @@ export default function AppLayout({
                             key={key}
                             draggable
                             onDragStart={() => onFileDragStart(item)}
+                            onClick={() => setPreviewFile(item)}
                             onContextMenu={(e) => openMenuForFile(e, item)}
                             onMouseEnter={() => setHoveredKey(key)}
                             onMouseLeave={() => setHoveredKey(null)}
                             style={{
-                              borderRadius: "12px", overflow: "hidden", cursor: "default",
+                              borderRadius: "12px", overflow: "hidden", cursor: "pointer",
                               backgroundColor: hoveredKey === key ? theme.tileHover : theme.tile,
                             }}
                           >
@@ -443,12 +446,12 @@ export default function AppLayout({
                         style={{
                           borderBottom: `1px solid ${theme.border}`,
                           backgroundColor: hoveredKey === key ? theme.hoverRow : "transparent",
-                          cursor: item.type === "folder" ? "pointer" : "default",
+                          cursor: "pointer",
                         }}
                       >
                         <td
                           style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
-                          onClick={() => item.type === "folder" && navigateInto(item.name)}
+                          onClick={() => item.type === "folder" ? navigateInto(item.name) : setPreviewFile(item)}
                         >
                           <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
                           {item.name}
@@ -474,6 +477,17 @@ export default function AppLayout({
 
       <input type="file" id="fileIn" style={{ display: "none" }} onChange={uploadFile} />
       <input type="file" id="folderIn" webkitdirectory="true" directory="" multiple style={{ display: "none" }} onChange={uploadFile} />
+
+      {previewFile && (
+        <PreviewModal
+          file={previewFile}
+          account={account}
+          API_BASE_URL={API_BASE_URL}
+          onClose={() => setPreviewFile(null)}
+          onDownload={downloadFile}
+          darkMode={darkMode}
+        />
+      )}
 
       {contextMenu && (
         <FileContextMenu
