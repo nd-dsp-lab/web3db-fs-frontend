@@ -20,10 +20,17 @@ export default function ShareModal({
   const fetchSharedUsers = useCallback(async () => {
     setLoadingList(true);
     try {
-      const res = await fetch(
-        `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}&user_address=${encodeURIComponent(account)}`,
-        { headers: { "ngrok-skip-browser-warning": "true" } }
-      );
+      // Folder mode: union of shared users across every file in the folder
+      const res = file.folder
+        ? await fetch(`${API_BASE_URL}/shared-users-batch`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+            body: JSON.stringify({ cids: file.cids, user_address: account }),
+          })
+        : await fetch(
+            `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}&user_address=${encodeURIComponent(account)}`,
+            { headers: { "ngrok-skip-browser-warning": "true" } }
+          );
       const data = await res.json();
       setSharedUsers(data.shared_with || []);
     } catch {
@@ -31,7 +38,7 @@ export default function ShareModal({
     } finally {
       setLoadingList(false);
     }
-  }, [API_BASE_URL, file.cid, account]);
+  }, [API_BASE_URL, file.cid, file.folder, file.cids, account]);
 
   useEffect(() => { fetchSharedUsers(); }, [fetchSharedUsers]);
 
@@ -95,6 +102,12 @@ export default function ShareModal({
             <X size={20} />
           </button>
         </div>
+
+        {file.folder && (
+          <div style={{ fontSize: "12px", color: t.subText, marginTop: "-12px", marginBottom: "16px" }}>
+            Shares the {file.cids.length} file(s) currently in this folder — files added later aren’t shared automatically.
+          </div>
+        )}
 
         {/* Recipient input */}
         <div style={{ display: "flex", gap: "10px", marginBottom: "22px" }}>

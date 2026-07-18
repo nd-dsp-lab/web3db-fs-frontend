@@ -3,7 +3,7 @@ import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil,
+  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil, UserPlus,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
@@ -93,7 +93,7 @@ export default function AppLayout({
   account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
-  handleShare, handleUnshare, fileTree, API_BASE_URL,
+  handleShare, handleUnshare, handleShareFolder, handleUnshareFolder, folderCidsOf, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete,
@@ -400,11 +400,13 @@ export default function AppLayout({
   const openMenuForFolder = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
-    setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item) });
+    setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item), shared: !!item.shared });
   };
 
   const navigateInto = (item) => {
-    setView("my-drive"); // starred-view folders navigate back into the drive
+    // Shared folders browse within the Shared view; starred-view folders
+    // navigate back into the drive
+    setView(item.shared ? "shared" : "my-drive");
     setCurrentPath(folderPathOf(item));
   };
 
@@ -447,7 +449,7 @@ export default function AppLayout({
   // --- Reusable bits ---
   const NavItem = ({ id, icon: Icon, label }) => (
     <div
-      onClick={() => { setView(id); setSearchQuery(""); }}
+      onClick={() => { setView(id); setCurrentPath("/"); setSearchQuery(""); }}
       style={{
         display: "flex", alignItems: "center", gap: "14px", padding: "8px 16px",
         cursor: "pointer", borderRadius: "999px", fontSize: "14px",
@@ -752,7 +754,7 @@ export default function AppLayout({
                   >
                     {VIEW_TITLES[view] || "My Drive"}
                   </span>
-                  {view === "my-drive" && crumbs.map((c, i) => (
+                  {(view === "my-drive" || view === "shared") && crumbs.map((c, i) => (
                     <React.Fragment key={i}>
                       <ChevronRight size={20} color={theme.subText} />
                       <span
@@ -1099,8 +1101,21 @@ export default function AppLayout({
               label: starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred",
               action: () => toggleStarFolder(folderMenu.path),
             },
-            { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name, folderMenu.path) },
-            { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => handleTrashFolder(folderMenu.path) },
+            // Owner-only actions hidden on folders shared to this user
+            ...(folderMenu.shared ? [] : [
+              {
+                Icon: UserPlus,
+                label: "Share",
+                action: () => setShareFile({
+                  folder: true,
+                  filename: folderMenu.name,
+                  path: folderMenu.path,
+                  cids: folderCidsOf ? folderCidsOf(folderMenu.path) : [],
+                }),
+              },
+              { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name, folderMenu.path) },
+              { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => handleTrashFolder(folderMenu.path) },
+            ]),
           ].map(({ Icon, label, color, action }) => (
             <div
               key={label}
@@ -1133,8 +1148,12 @@ export default function AppLayout({
           account={account}
           API_BASE_URL={API_BASE_URL}
           onClose={() => setShareFile(null)}
-          onShare={handleShare}
-          onUnshare={handleUnshare}
+          onShare={shareFile.folder
+            ? (_cid, recipient, name) => handleShareFolder(shareFile.path, recipient, name)
+            : handleShare}
+          onUnshare={shareFile.folder
+            ? (_cid, addr) => handleUnshareFolder(shareFile.path, addr)
+            : handleUnshare}
           darkMode={darkMode}
         />
       )}

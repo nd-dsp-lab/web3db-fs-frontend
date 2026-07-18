@@ -412,6 +412,93 @@ function App() {
     }
   };
 
+  // --- FOLDER SHARE ---
+  // Paths are flat on-chain, so sharing a folder grants READ+DOWNLOAD on every
+  // owned file currently under it — one grantFiles tx, one signature. Files
+  // added to the folder later are NOT auto-shared (snapshot semantics).
+  const folderCidsOf = (folderPath) =>
+    files
+      .filter((f) => f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/"))
+      .map((f) => f.cid);
+
+  const handleShareFolder = async (folderPath, recipient, folderName) => {
+    if (!account) return;
+    const cids = folderCidsOf(folderPath);
+    if (cids.length === 0) {
+      toast.info("Folder is empty — nothing to share");
+      return;
+    }
+    let tId;
+    try {
+      let toAddress = recipient.trim();
+      const recipientEmail = toAddress.includes("@") ? toAddress.toLowerCase() : null;
+      if (!toAddress.startsWith("0x")) {
+        const resolved = await resolveRecipient(toAddress);
+        const note = resolved.pregenerated
+          ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the folder will appear when they first log in."
+          : "";
+        const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
+        if (!window.confirm(`Share with ${toAddress} (${short})?${note}`)) return;
+        toAddress = resolved.address;
+      }
+      tId = toast.loading(`Sharing ${cids.length} file(s)…`);
+      const response = await fetch(`${API_BASE_URL}/share-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({ cids, to_address: toAddress, user_address: account })
+      });
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Folder share prepare failed:", data);
+        toast.update(tId, "Share failed. Check console for details.", "error");
+        return;
+      }
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, `Shared folder with ${recipient.trim()}`, "success");
+      if (recipientEmail) {
+        const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
+        fetch(`${API_BASE_URL}/notify-share`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+          body: JSON.stringify({
+            recipient_email: recipientEmail,
+            filename: `the folder "${folderName}"`,
+            sharer: sharerName
+          })
+        }).catch((e) => console.warn("Share notification failed:", e));
+      }
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Share", err, tId);
+    }
+  };
+
+  const handleUnshareFolder = async (folderPath, toAddress) => {
+    if (!account) return;
+    const cids = folderCidsOf(folderPath);
+    if (cids.length === 0) return;
+    let tId;
+    try {
+      tId = toast.loading("Revoking access…");
+      const response = await fetch(`${API_BASE_URL}/unshare-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({ cids, to_address: toAddress, user_address: account })
+      });
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Folder unshare prepare failed:", data);
+        toast.update(tId, "Unshare failed. Check console for details.", "error");
+        return;
+      }
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, "Access revoked", "success");
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Unshare", err, tId);
+    }
+  };
+
   // Prepare + sign a single move; shared by rename, drag-move, trash,
   // restore and their bulk variants. Throws on failure — callers own toasts.
   const moveTx = async (cid, newPath, tId) => {
@@ -594,17 +681,39 @@ function App() {
         .filter(f => (f.filename || f.name || "").toLowerCase().includes(searchQuery.toLowerCase()))
         .map(asFileItem)
     : view === "shared"
-    ? active.filter(f => !f.is_owner).map(asFileItem)
+    // Shared files keep the owner's paths, so group them into folders and
+    // let currentPath drive navigation just like My Drive. Folder items are
+    // tagged shared:true so navigation stays in this view and owner-only
+    // actions (rename, trash, share) are suppressed.
+    ? (() => {
+        const prefix = currentPath === "/" ? "/" : currentPath + "/";
+        const folderNames = new Set();
+        const fileItems = [];
+        for (const f of active.filter((f) => !f.is_owner)) {
+          const full = fullPathOf(f);
+          if (!full.startsWith(prefix)) continue;
+          const rest = full.slice(prefix.length);
+          const slash = rest.indexOf("/");
+          if (slash === -1) fileItems.push(asFileItem(f));
+          else folderNames.add(rest.slice(0, slash));
+        }
+        return [
+          ...[...folderNames].sort().map((n) => ({ type: "folder", name: n, shared: true, fullPath: prefix + n })),
+          ...fileItems,
+        ];
+      })()
     : view === "recent"
     ? [...active].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30).map(asFileItem)
     : view === "starred"
     ? [
         // starred folders that still exist; fullPath drives navigation since
-        // the Starred view is flat
+        // the Starred view is flat. Folders shared to this user aren't in the
+        // owned tree — detect them by path prefix and tag shared:true so
+        // navigation opens them in the Shared view.
         ...[...starredFolders]
-          .filter(folderExists)
+          .filter((p) => folderExists(p) || active.some((f) => !f.is_owner && fullPathOf(f).startsWith(p + "/")))
           .sort()
-          .map((p) => ({ type: "folder", name: p.split("/").pop(), fullPath: p })),
+          .map((p) => ({ type: "folder", name: p.split("/").pop(), fullPath: p, shared: !folderExists(p) })),
         ...active.filter(f => starred.has(f.cid)).map(asFileItem),
       ]
     : view === "trash"
@@ -850,6 +959,9 @@ function App() {
       handleRestore={handleRestore}
       handleDeleteFolder={handleDeleteFolder}
       handleShare={handleShare}
+      handleShareFolder={handleShareFolder}
+      handleUnshareFolder={handleUnshareFolder}
+      folderCidsOf={folderCidsOf}
       handleUnshare={handleUnshare}
       fileTree={fileTree}
       API_BASE_URL={API_BASE_URL}
