@@ -71,7 +71,10 @@ export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) 
   }, [cid, API_BASE_URL, authToken]);
 
   if (!src || src === "failed") return fallback;
-  return <img src={src} alt={filename} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }} />;
+  // Photos crop from the center; document-style thumbs (text, PDF) are
+  // top-anchored so short content isn't cropped away to a blank strip.
+  const isPhoto = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(filename.split(".").pop().toLowerCase());
+  return <img src={src} alt={filename} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: isPhoto ? "center" : "top", borderRadius: "8px" }} />;
 }
 
 export function formatBytes(bytes) {
