@@ -119,6 +119,48 @@ function App() {
     });
   };
 
+  // --- STARRED FOLDERS (folders have no CID, so stars are keyed by path;
+  // rename/trash/delete rewrite or remove them) ---
+  const [starredFolders, setStarredFolders] = useState(new Set());
+  useEffect(() => {
+    if (!account) { setStarredFolders(new Set()); return; }
+    try {
+      const saved = JSON.parse(localStorage.getItem(`starredFolders:${account.toLowerCase()}`) || "[]");
+      setStarredFolders(new Set(saved));
+    } catch {
+      setStarredFolders(new Set());
+    }
+  }, [account]);
+
+  const persistStarredFolders = (next) => {
+    if (account) localStorage.setItem(`starredFolders:${account.toLowerCase()}`, JSON.stringify([...next]));
+    return next;
+  };
+
+  const toggleStarFolder = (folderPath) => {
+    if (!account) return;
+    setStarredFolders((prev) => {
+      const next = new Set(prev);
+      next.has(folderPath) ? next.delete(folderPath) : next.add(folderPath);
+      return persistStarredFolders(next);
+    });
+  };
+
+  // Drop stars for a folder (and its subfolders), or remap them on rename
+  const remapStarredFolders = (folderPath, newPath = null) => {
+    setStarredFolders((prev) => {
+      const next = new Set();
+      for (const p of prev) {
+        if (p === folderPath || p.startsWith(folderPath + "/")) {
+          if (newPath) next.add(newPath + p.slice(folderPath.length));
+        } else {
+          next.add(p);
+        }
+      }
+      return persistStarredFolders(next);
+    });
+  };
+
   const disconnectWallet = async () => {
     await logout();
     setFiles([]);
@@ -538,6 +580,14 @@ function App() {
 
   // --- DYNAMIC ITEM FILTERING ---
   const asFileItem = (f) => ({ ...f, type: "file", name: f.filename || f.name });
+  const folderExists = (path) => {
+    let node = fileTree;
+    for (const part of (path || "").split("/").filter(Boolean)) {
+      node = node?.children?.find((c) => c.type === "folder" && c.name === part);
+      if (!node) return false;
+    }
+    return !!node;
+  };
   const active = files.filter(f => !isTrashed(f)); // trashed files only show in the Trash view
   const displayItems = searchQuery.length > 0
     ? active
@@ -548,7 +598,15 @@ function App() {
     : view === "recent"
     ? [...active].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30).map(asFileItem)
     : view === "starred"
-    ? active.filter(f => starred.has(f.cid)).map(asFileItem)
+    ? [
+        // starred folders that still exist; fullPath drives navigation since
+        // the Starred view is flat
+        ...[...starredFolders]
+          .filter(folderExists)
+          .sort()
+          .map((p) => ({ type: "folder", name: p.split("/").pop(), fullPath: p })),
+        ...active.filter(f => starred.has(f.cid)).map(asFileItem),
+      ]
     : view === "trash"
     ? files.filter(f => f.is_owner && isTrashed(f)).map(asFileItem)
     : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
@@ -696,6 +754,7 @@ function App() {
         }
         return persistEmptyFolders(next);
       });
+      remapStarredFolders(folderPath);
       retrieveFiles();
     } catch (err) {
       reportTxError("Delete folder", err, tId);
@@ -726,11 +785,13 @@ function App() {
     if (affected.length === 0) {
       // Empty folders exist only locally — nothing on-chain to trash
       dropEmptyEntries();
+      remapStarredFolders(folderPath);
       toast.success("Folder deleted");
       return;
     }
     await runBatchMove(affected, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
     dropEmptyEntries();
+    remapStarredFolders(folderPath);
   };
 
   // --- FOLDER RENAME ---
@@ -757,11 +818,13 @@ function App() {
     );
     if (affected.length === 0) {
       rewriteEmptyFolders();
+      remapStarredFolders(folderPath, newPath);
       toast.success("Folder renamed");
       return;
     }
     await runBatchMove(affected, "Renaming", (f) => newPath + fullPathOf(f).slice(folderPath.length));
     rewriteEmptyFolders();
+    remapStarredFolders(folderPath, newPath);
   };
 
   return (
@@ -798,6 +861,8 @@ function App() {
       toggleTheme={toggleTheme}
       user={user}
       starred={starred}
+      starredFolders={starredFolders}
+      toggleStarFolder={toggleStarFolder}
       toggleStar={toggleStar}
       toggleStarMany={toggleStarMany}
       storageUsed={storageUsed}

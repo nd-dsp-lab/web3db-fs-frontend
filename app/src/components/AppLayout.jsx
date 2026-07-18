@@ -95,7 +95,7 @@ export default function AppLayout({
   handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
-  starred, toggleStar, toggleStarMany, storageUsed, toast,
+  starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
@@ -360,16 +360,13 @@ export default function AppLayout({
     setContextMenu({ x: e.clientX, y: e.clientY, file: item });
   };
 
-  // Folder delete moves contents to trash (batch move, one signature);
-  // permanent deletion happens from the Trash view.
-  const trashFolder = (folderName) => {
-    const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
-    handleTrashFolder(folderPath);
-  };
+  // Folder items in My Drive only carry a name (path = currentPath + name);
+  // in the Starred view they carry their full path directly.
+  const folderPathOf = (item) =>
+    item.fullPath || (currentPath === "/" ? `/${item.name}` : `${currentPath}/${item.name}`);
 
-  const downloadFolder = async (folderName) => {
+  const downloadFolder = async (folderName, folderPath) => {
     if (!authToken) { toast.info("Verifying sign-in — try again in a moment"); return; }
-    const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
     const tId = toast.loading(`Zipping "${folderName}"…`);
     try {
       const res = await fetch(
@@ -393,22 +390,22 @@ export default function AppLayout({
     }
   };
 
-  const promptRenameFolder = (folderName) => {
-    const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
+  const promptRenameFolder = (folderName, folderPath) => {
     const newName = window.prompt("New folder name", folderName)?.trim();
     if (!newName || newName === folderName) return;
     if (newName.includes("/")) { toast.error("Folder name can't contain /"); return; }
     handleRenameFolder(folderPath, newName);
   };
 
-  const openMenuForFolder = (e, folderName) => {
+  const openMenuForFolder = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
-    setFolderMenu({ x: e.clientX, y: e.clientY, name: folderName });
+    setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item) });
   };
 
-  const navigateInto = (folderName) => {
-    setCurrentPath(currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`);
+  const navigateInto = (item) => {
+    setView("my-drive"); // starred-view folders navigate back into the drive
+    setCurrentPath(folderPathOf(item));
   };
 
   // Account chip: social users see name/email, wallet users see the address
@@ -468,7 +465,7 @@ export default function AppLayout({
 
   const MoreButton = ({ item, visible }) => (
     <button
-      onClick={(e) => { e.stopPropagation(); item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item.name); }}
+      onClick={(e) => { e.stopPropagation(); item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item); }}
       title="More actions"
       style={{
         background: "none", border: "none", cursor: "pointer", color: theme.subText,
@@ -874,8 +871,8 @@ export default function AppLayout({
                           <div
                             key={key}
                             data-noselect="true"
-                            onClick={() => navigateInto(item.name)}
-                            onContextMenu={(e) => openMenuForFolder(e, item.name)}
+                            onClick={() => navigateInto(item)}
+                            onContextMenu={(e) => openMenuForFolder(e, item)}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => onFolderDrop(e, item.name)}
                             onMouseEnter={() => setHoveredKey(key)}
@@ -888,6 +885,7 @@ export default function AppLayout({
                           >
                             <Folder size={20} fill={theme.subText} color={theme.subText} style={{ flexShrink: 0 }} />
                             <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                            {starredFolders?.has(folderPathOf(item)) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
                             <MoreButton item={item} visible={hoveredKey === key} />
                           </div>
                         );
@@ -992,7 +990,7 @@ export default function AppLayout({
                         onDragStart={() => item.type === "file" && onFileDragStart(item)}
                         onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
                         onDrop={(e) => item.type === "folder" && onFolderDrop(e, item.name)}
-                        onContextMenu={(e) => item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item.name)}
+                        onContextMenu={(e) => item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item)}
                         onMouseEnter={() => setHoveredKey(key)}
                         onMouseLeave={() => setHoveredKey(null)}
                         style={{
@@ -1008,12 +1006,14 @@ export default function AppLayout({
                           style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
                           onClick={(e) => {
                             if (item.type === "file" && (e.ctrlKey || e.metaKey)) { toggleSelect(item.cid); return; }
-                            item.type === "folder" ? navigateInto(item.name) : setPreviewFile(item);
+                            item.type === "folder" ? navigateInto(item) : setPreviewFile(item);
                           }}
                         >
                           <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
                           {item.name}
-                          {item.type === "file" && starred?.has(item.cid) && <Star size={13} fill="#F29900" color="#F29900" />}
+                          {((item.type === "file" && starred?.has(item.cid)) ||
+                            (item.type === "folder" && starredFolders?.has(folderPathOf(item)))) &&
+                            <Star size={13} fill="#F29900" color="#F29900" />}
                         </td>
                         <td style={{ fontSize: "13px", color: theme.subText }}>
                           {item.type === "file"
@@ -1093,9 +1093,14 @@ export default function AppLayout({
           }}
         >
           {[
-            { Icon: Download, label: "Download", action: () => downloadFolder(folderMenu.name) },
-            { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name) },
-            { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => trashFolder(folderMenu.name) },
+            { Icon: Download, label: "Download", action: () => downloadFolder(folderMenu.name, folderMenu.path) },
+            {
+              Icon: Star,
+              label: starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred",
+              action: () => toggleStarFolder(folderMenu.path),
+            },
+            { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name, folderMenu.path) },
+            { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => handleTrashFolder(folderMenu.path) },
           ].map(({ Icon, label, color, action }) => (
             <div
               key={label}
