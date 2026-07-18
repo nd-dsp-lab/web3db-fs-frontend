@@ -424,7 +424,10 @@ function App() {
   // Aggregate stats for the folder details panel; covers owned folders and
   // folders shared to this user (paths are the owner's either way).
   const folderStatsOf = (folderPath) => {
-    const inFolder = files.filter((f) => !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/"));
+    // A /.trash-prefixed path only ever matches trashed files, so the
+    // isTrashed exclusion applies just to live-folder paths
+    const inTrash = folderPath.startsWith(TRASH_PREFIX);
+    const inFolder = files.filter((f) => (inTrash || !isTrashed(f)) && fullPathOf(f).startsWith(folderPath + "/"));
     const subfolders = new Set();
     for (const f of inFolder) {
       const rest = fullPathOf(f).slice(folderPath.length + 1);
@@ -444,11 +447,13 @@ function App() {
     };
   };
 
-  const handleShareFolder = async (folderPath, recipient, folderName) => {
+  // Share many cids with one recipient — one grantFiles tx. Used by folder
+  // share and multi-select share; notifyName labels the email notification
+  // (e.g. 'the folder "docs"' or '3 items').
+  const handleShareCids = async (cids, recipient, notifyName) => {
     if (!account) return;
-    const cids = folderCidsOf(folderPath);
-    if (cids.length === 0) {
-      toast.info("Folder is empty — nothing to share");
+    if (!cids.length) {
+      toast.info("Nothing to share");
       return;
     }
     let tId;
@@ -458,7 +463,7 @@ function App() {
       if (!toAddress.startsWith("0x")) {
         const resolved = await resolveRecipient(toAddress);
         const note = resolved.pregenerated
-          ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the folder will appear when they first log in."
+          ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the files will appear when they first log in."
           : "";
         const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
         if (!window.confirm(`Share with ${toAddress} (${short})?${note}`)) return;
@@ -472,12 +477,12 @@ function App() {
       });
       const data = await response.json();
       if (!data.transaction) {
-        console.error("Folder share prepare failed:", data);
+        console.error("Batch share prepare failed:", data);
         toast.update(tId, "Share failed. Check console for details.", "error");
         return;
       }
       await signAndVerifyTransaction(data.transaction, tId);
-      toast.update(tId, `Shared folder with ${recipient.trim()}`, "success");
+      toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       if (recipientEmail) {
         const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
         fetch(`${API_BASE_URL}/notify-share`, {
@@ -485,7 +490,7 @@ function App() {
           headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
           body: JSON.stringify({
             recipient_email: recipientEmail,
-            filename: `the folder "${folderName}"`,
+            filename: notifyName,
             sharer: sharerName
           })
         }).catch((e) => console.warn("Share notification failed:", e));
@@ -496,10 +501,9 @@ function App() {
     }
   };
 
-  const handleUnshareFolder = async (folderPath, toAddress) => {
+  const handleUnshareCids = async (cids, toAddress) => {
     if (!account) return;
-    const cids = folderCidsOf(folderPath);
-    if (cids.length === 0) return;
+    if (!cids.length) return;
     let tId;
     try {
       tId = toast.loading("Revoking access…");
@@ -643,16 +647,62 @@ function App() {
     }
   };
 
-  const handleBulkTrash = (items) =>
-    runBatchMove(items, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
+  // Bulk trash of files plus whole folders (multi-select): folders expand to
+  // their owned files, everything moves in one moveFiles tx. Folder star and
+  // empty-folder bookkeeping is dropped afterwards, like handleTrashFolder.
+  const handleBulkTrash = async (items, folderPaths = []) => {
+    const seen = new Set(items.map((f) => f.cid));
+    const folderFiles = folderPaths.flatMap((p) =>
+      files.filter((f) => f.is_owner && !isTrashed(f) && !seen.has(f.cid) && fullPathOf(f).startsWith(p + "/"))
+    );
+    folderFiles.forEach((f) => seen.add(f.cid));
+    const all = [...items, ...folderFiles];
 
-  const handleBulkRestore = (items) =>
-    runBatchMove(items, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length) || `/${f.filename}`);
+    const dropFolderEntries = () => {
+      if (!folderPaths.length) return;
+      setEmptyFolders((prev) => {
+        const next = new Set();
+        for (const p of prev) {
+          if (!folderPaths.some((fp) => p === fp || p.startsWith(fp + "/"))) next.add(p);
+        }
+        return persistEmptyFolders(next);
+      });
+      folderPaths.forEach((p) => remapStarredFolders(p));
+    };
 
-  // Bulk delete-forever is a single cleanFolder(cids) transaction
-  const handleBulkDelete = async (items) => {
-    if (!window.confirm(`Permanently delete ${items.length} file(s)? This cannot be undone.`)) return;
-    const tId = toast.loading(`Deleting ${items.length} file(s)…`);
+    if (all.length === 0) {
+      // Only empty folders selected — local bookkeeping, nothing on-chain
+      dropFolderEntries();
+      if (folderPaths.length) toast.success("Folder(s) deleted");
+      return;
+    }
+    await runBatchMove(all, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
+    dropFolderEntries();
+  };
+
+  // Files in the trash under a logical folder path (path without /.trash)
+  const trashedFilesUnder = (folderPath) =>
+    files.filter((f) => f.is_owner && isTrashed(f) && fullPathOf(f).startsWith(TRASH_PREFIX + folderPath + "/"));
+
+  // items + whole trash folders expanded to their files — one moveFiles tx
+  const handleBulkRestore = (items, folderPaths = []) => {
+    const seen = new Set(items.map((f) => f.cid));
+    const all = [...items, ...folderPaths.flatMap(trashedFilesUnder).filter((f) => !seen.has(f.cid))];
+    if (!all.length) return;
+    return runBatchMove(all, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length) || `/${f.filename}`);
+  };
+
+  const handleRestoreFolder = (folderPath) => handleBulkRestore([], [folderPath]);
+  const handleDeleteFolderForever = (folderPath) => handleBulkDelete([], [folderPath]);
+
+  // Bulk delete-forever is a single cleanFolder(cids) transaction; trash
+  // folders expand to their files first
+  const handleBulkDelete = async (items, folderPaths = []) => {
+    const seen = new Set(items.map((f) => f.cid));
+    const all = [...items, ...folderPaths.flatMap(trashedFilesUnder).filter((f) => !seen.has(f.cid))];
+    if (!all.length) return;
+    if (!window.confirm(`Permanently delete ${all.length} file(s)? This cannot be undone.`)) return;
+    const tId = toast.loading(`Deleting ${all.length} file(s)…`);
     try {
       const response = await fetch(`${API_BASE_URL}/delete-batch`, {
         method: "POST",
@@ -660,7 +710,7 @@ function App() {
           "Content-Type": "application/json",
           "ngrok-skip-browser-warning": "true"
         },
-        body: JSON.stringify({ user_address: account, cids: items.map((f) => f.cid) })
+        body: JSON.stringify({ user_address: account, cids: all.map((f) => f.cid) })
       });
       const data = await response.json();
       if (!data.transaction) {
@@ -669,23 +719,33 @@ function App() {
         return;
       }
       await signAndVerifyTransaction(data.transaction, tId);
-      toast.update(tId, `Deleted ${items.length} file(s) forever`, "success");
+      toast.update(tId, `Deleted ${all.length} file(s) forever`, "success");
       retrieveFiles();
     } catch (err) {
       reportTxError("Delete", err, tId);
     }
   };
 
-  // Bulk star: if every selected file is already starred, unstar them all
-  const toggleStarMany = (cids) => {
+  // Bulk star: if every selected file is already starred, unstar them all.
+  // folderPaths lets multi-select star folders in the same gesture — the
+  // all-starred check spans both sets so the toggle stays consistent.
+  const toggleStarMany = (cids, folderPaths = []) => {
     if (!account) return;
+    const allStarred =
+      cids.every((c) => starred.has(c)) && folderPaths.every((p) => starredFolders.has(p));
     setStarred((prev) => {
       const next = new Set(prev);
-      const allStarred = cids.every((c) => next.has(c));
       cids.forEach((c) => (allStarred ? next.delete(c) : next.add(c)));
       localStorage.setItem(`starred:${account.toLowerCase()}`, JSON.stringify([...next]));
       return next;
     });
+    if (folderPaths.length) {
+      setStarredFolders((prev) => {
+        const next = new Set(prev);
+        folderPaths.forEach((p) => (allStarred ? next.delete(p) : next.add(p)));
+        return persistStarredFolders(next);
+      });
+    }
   };
 
   // --- DYNAMIC ITEM FILTERING ---
@@ -740,7 +800,30 @@ function App() {
         ...active.filter(f => starred.has(f.cid)).map(asFileItem),
       ]
     : view === "trash"
-    ? files.filter(f => f.is_owner && isTrashed(f)).map(asFileItem)
+    // Trashed files keep their original paths under /.trash — group them
+    // into folders like the Shared view, with currentPath as the position
+    // inside the trash. Folder items are tagged trash:true so navigation
+    // stays here and the menu offers restore/delete-forever.
+    ? (() => {
+        const prefix = TRASH_PREFIX + (currentPath === "/" ? "" : currentPath) + "/";
+        const folderNames = new Set();
+        const fileItems = [];
+        for (const f of files.filter((f) => f.is_owner && isTrashed(f))) {
+          const full = fullPathOf(f);
+          if (!full.startsWith(prefix)) continue;
+          const rest = full.slice(prefix.length);
+          const slash = rest.indexOf("/");
+          if (slash === -1) fileItems.push(asFileItem(f));
+          else folderNames.add(rest.slice(0, slash));
+        }
+        return [
+          ...[...folderNames].sort().map((n) => ({
+            type: "folder", name: n, trash: true,
+            fullPath: (currentPath === "/" ? "" : currentPath) + "/" + n,
+          })),
+          ...fileItems,
+        ];
+      })()
     : (fileTree ? (getFolderContents(fileTree, currentPath) || []) : []);
 
   // Storage usage: only files the user owns count against them
@@ -982,10 +1065,12 @@ function App() {
       handleRestore={handleRestore}
       handleDeleteFolder={handleDeleteFolder}
       handleShare={handleShare}
-      handleShareFolder={handleShareFolder}
-      handleUnshareFolder={handleUnshareFolder}
       folderCidsOf={folderCidsOf}
       folderStatsOf={folderStatsOf}
+      handleShareCids={handleShareCids}
+      handleUnshareCids={handleUnshareCids}
+      handleRestoreFolder={handleRestoreFolder}
+      handleDeleteFolderForever={handleDeleteFolderForever}
       handleUnshare={handleUnshare}
       fileTree={fileTree}
       API_BASE_URL={API_BASE_URL}

@@ -93,7 +93,9 @@ export default function AppLayout({
   account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
-  handleShare, handleUnshare, handleShareFolder, handleUnshareFolder, folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
+  handleShare, handleUnshare, handleShareCids, handleUnshareCids,
+  handleRestoreFolder, handleDeleteFolderForever,
+  folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete,
@@ -103,11 +105,12 @@ export default function AppLayout({
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
   const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
+  const [selMenu, setSelMenu] = useState(null); // { x, y } — right-click menu over a multi-selection
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
-  const [selected, setSelected] = useState(new Set()); // file CIDs (folders not selectable)
+  const [selected, setSelected] = useState(new Set()); // file CIDs + "folder:{path}" keys
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsFile, setDetailsFile] = useState(null);
 
@@ -225,8 +228,8 @@ export default function AppLayout({
   };
 
   useEffect(() => {
-    if (!bgMenu && !folderMenu) return;
-    const close = () => { setBgMenu(null); setFolderMenu(null); };
+    if (!bgMenu && !folderMenu && !selMenu) return;
+    const close = () => { setBgMenu(null); setFolderMenu(null); setSelMenu(null); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
@@ -234,7 +237,7 @@ export default function AppLayout({
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", onKey);
     };
-  }, [bgMenu, folderMenu]);
+  }, [bgMenu, folderMenu, selMenu]);
 
   // --- RUBBER-BAND SELECTION ---
   // Drag from empty content-area background to draw a selection box; file
@@ -357,6 +360,8 @@ export default function AppLayout({
   const openMenuForFile = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
+    // Right-click inside a multi-selection acts on the whole selection
+    if (selectedCount > 1 && selected.has(item.cid)) { setSelMenu({ x: e.clientX, y: e.clientY }); return; }
     setContextMenu({ x: e.clientX, y: e.clientY, file: item });
   };
 
@@ -400,13 +405,15 @@ export default function AppLayout({
   const openMenuForFolder = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
-    setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item), shared: !!item.shared });
+    // Right-click inside a multi-selection acts on the whole selection
+    if (selectedCount > 1 && selected.has(folderKeyOf(item))) { setSelMenu({ x: e.clientX, y: e.clientY }); return; }
+    setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item), shared: !!item.shared, trash: !!item.trash });
   };
 
   const navigateInto = (item) => {
-    // Shared folders browse within the Shared view; starred-view folders
-    // navigate back into the drive
-    setView(item.shared ? "shared" : "my-drive");
+    // Shared/trash folders browse within their own views; starred-view
+    // folders navigate back into the drive
+    setView(item.shared ? "shared" : item.trash ? "trash" : "my-drive");
     setCurrentPath(folderPathOf(item));
   };
 
@@ -434,15 +441,44 @@ export default function AppLayout({
   const folders = (displayItems || []).filter((i) => i.type === "folder")
     .map((i) => {
       if (sortBy === "name" || !folderStatsOf) return i;
-      const s = folderStatsOf(folderPathOf(i));
+      // Trash-view folder paths are logical — the real path sits under /.trash
+      const s = folderStatsOf((i.trash ? "/.trash" : "") + folderPathOf(i));
       return { ...i, size: s.size, timestamp: s.latest || 0 };
     })
     .sort((a, b) => fileCmp(a, b) * dirMul);
   const fileItems = (displayItems || []).filter((i) => i.type === "file")
     .sort((a, b) => fileCmp(a, b) * dirMul);
   const selectedFiles = fileItems.filter((f) => selected.has(f.cid));
-  const someSelected = selectedFiles.length > 0;
+  const folderKeyOf = (item) => `folder:${folderPathOf(item)}`;
+  const selectedFolders = folders.filter((i) => selected.has(folderKeyOf(i)));
+  const selectedCount = selectedFiles.length + selectedFolders.length;
+  const someSelected = selectedCount > 0;
   const clearSelection = () => setSelected(new Set());
+
+  // Multi-select share: owned files + owned folders expanded to their cids,
+  // presented through the ShareModal's folder mode as one grantFiles tx.
+  const ownedSelection = selectedFiles.every((f) => f.is_owner) && selectedFolders.every((i) => !i.shared);
+  const openShareForSelection = () => {
+    const cids = [
+      ...selectedFiles.filter((f) => f.is_owner).map((f) => f.cid),
+      ...selectedFolders.filter((i) => !i.shared).flatMap((i) => (folderCidsOf ? folderCidsOf(folderPathOf(i)) : [])),
+    ];
+    setShareFile({
+      folder: true,
+      selection: true,
+      filename: `${selectedCount} selected item(s)`,
+      cids: [...new Set(cids)],
+    });
+  };
+
+  // Multi-select download: each folder as its own zip, then files one by
+  // one. Trash-view folder paths are logical — the real path sits under /.trash.
+  const downloadSelection = async () => {
+    for (const i of selectedFolders) {
+      await downloadFolder(i.name, (i.trash ? "/.trash" : "") + folderPathOf(i));
+    }
+    if (selectedFiles.length) await downloadMany(selectedFiles);
+  };
 
   // While the panel is open it follows the selection; navigation away from
   // the shown file's view clears it via displayItems refresh below.
@@ -724,25 +760,35 @@ export default function AppLayout({
               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                 <ToolbarButton icon={X} title="Clear selection" onClick={clearSelection} />
                 <span style={{ fontSize: "15px", fontWeight: 500, marginRight: "10px" }}>
-                  {selectedFiles.length} selected
+                  {selectedCount} selected
                 </span>
                 {view !== "trash" && (
                   <ToolbarButton
                     icon={Star}
-                    title={selectedFiles.every((f) => starred?.has(f.cid)) ? "Remove from starred" : "Add to starred"}
-                    onClick={() => toggleStarMany(selectedFiles.map((f) => f.cid))}
+                    title={selectedFiles.every((f) => starred?.has(f.cid)) && selectedFolders.every((i) => starredFolders?.has(folderPathOf(i)))
+                      ? "Remove from starred" : "Add to starred"}
+                    onClick={() => toggleStarMany(selectedFiles.map((f) => f.cid), selectedFolders.map(folderPathOf))}
                   />
                 )}
-                <ToolbarButton icon={Download} title="Download" onClick={() => { downloadMany(selectedFiles); clearSelection(); }} />
+                {view !== "trash" && ownedSelection && (
+                  <ToolbarButton icon={UserPlus} title="Share" onClick={openShareForSelection} />
+                )}
+                <ToolbarButton icon={Download} title="Download" onClick={() => { downloadSelection(); clearSelection(); }} />
                 {view === "trash" ? (
                   <>
-                    <ToolbarButton icon={RotateCcw} title="Restore" onClick={() => { handleBulkRestore(selectedFiles); clearSelection(); }} />
-                    <ToolbarButton icon={Trash2} title="Delete forever" color="#d93025" onClick={() => { handleBulkDelete(selectedFiles); clearSelection(); }} />
+                    <ToolbarButton icon={RotateCcw} title="Restore" onClick={() => { handleBulkRestore(selectedFiles, selectedFolders.map(folderPathOf)); clearSelection(); }} />
+                    <ToolbarButton icon={Trash2} title="Delete forever" color="#d93025" onClick={() => { handleBulkDelete(selectedFiles, selectedFolders.map(folderPathOf)); clearSelection(); }} />
                   </>
                 ) : (
                   <ToolbarButton
                     icon={Trash2} title="Move to trash" color="#d93025"
-                    onClick={() => { handleBulkTrash(selectedFiles.filter((f) => f.is_owner)); clearSelection(); }}
+                    onClick={() => {
+                      handleBulkTrash(
+                        selectedFiles.filter((f) => f.is_owner),
+                        selectedFolders.filter((i) => !i.shared).map(folderPathOf)
+                      );
+                      clearSelection();
+                    }}
                   />
                 )}
               </div>
@@ -760,7 +806,7 @@ export default function AppLayout({
                   >
                     {VIEW_TITLES[view] || "My Drive"}
                   </span>
-                  {(view === "my-drive" || view === "shared") && crumbs.map((c, i) => (
+                  {(view === "my-drive" || view === "shared" || view === "trash") && crumbs.map((c, i) => (
                     <React.Fragment key={i}>
                       <ChevronRight size={20} color={theme.subText} />
                       <span
@@ -875,11 +921,15 @@ export default function AppLayout({
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px" }}>
                       {folders.map((item) => {
                         const key = `folder-${item.name}`;
+                        const selKey = folderKeyOf(item);
                         return (
                           <div
                             key={key}
-                            data-noselect="true"
-                            onClick={() => navigateInto(item)}
+                            data-cid={selKey}
+                            onClick={(e) => {
+                              if (e.ctrlKey || e.metaKey) { toggleSelect(selKey); return; }
+                              navigateInto(item);
+                            }}
                             onContextMenu={(e) => openMenuForFolder(e, item)}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => onFolderDrop(e, item.name)}
@@ -891,6 +941,7 @@ export default function AppLayout({
                               backgroundColor: hoveredKey === key ? theme.tileHover : theme.tile,
                             }}
                           >
+                            <SelectBox cid={selKey} visible={hoveredKey === key || someSelected} />
                             <Folder size={20} fill={theme.subText} color={theme.subText} style={{ flexShrink: 0 }} />
                             <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
                             {starredFolders?.has(folderPathOf(item)) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
@@ -963,15 +1014,15 @@ export default function AppLayout({
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${theme.border}`, textAlign: "left", color: theme.subText, fontSize: "13px" }}>
                     <th style={{ width: "32px", padding: "10px 0 10px 8px" }}>
-                      {fileItems.length > 0 && (
+                      {(fileItems.length > 0 || folders.length > 0) && (
                         <input
                           type="checkbox"
                           title="Select all"
-                          checked={selectedFiles.length === fileItems.length}
+                          checked={selectedCount === fileItems.length + folders.length}
                           onChange={() =>
-                            setSelected(selectedFiles.length === fileItems.length
+                            setSelected(selectedCount === fileItems.length + folders.length
                               ? new Set()
-                              : new Set(fileItems.map((f) => f.cid)))
+                              : new Set([...fileItems.map((f) => f.cid), ...folders.map(folderKeyOf)]))
                           }
                           style={{ width: "16px", height: "16px", accentColor: "#1A73E8", cursor: "pointer" }}
                         />
@@ -993,7 +1044,7 @@ export default function AppLayout({
                     return (
                       <tr
                         key={key}
-                        {...(item.type === "file" ? { "data-cid": item.cid } : { "data-noselect": "true" })}
+                        data-cid={item.type === "file" ? item.cid : folderKeyOf(item)}
                         draggable={item.type === "file"}
                         onDragStart={() => item.type === "file" && onFileDragStart(item)}
                         onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
@@ -1008,12 +1059,15 @@ export default function AppLayout({
                         }}
                       >
                         <td style={{ padding: "10px 0 10px 8px" }}>
-                          {item.type === "file" && <SelectBox cid={item.cid} visible={hoveredKey === key || someSelected} />}
+                          <SelectBox
+                            cid={item.type === "file" ? item.cid : folderKeyOf(item)}
+                            visible={hoveredKey === key || someSelected}
+                          />
                         </td>
                         <td
                           style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
                           onClick={(e) => {
-                            if (item.type === "file" && (e.ctrlKey || e.metaKey)) { toggleSelect(item.cid); return; }
+                            if (e.ctrlKey || e.metaKey) { toggleSelect(item.type === "file" ? item.cid : folderKeyOf(item)); return; }
                             item.type === "folder" ? navigateInto(item) : setPreviewFile(item);
                           }}
                         >
@@ -1103,7 +1157,10 @@ export default function AppLayout({
             zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
           }}
         >
-          {[
+          {(folderMenu.trash ? [
+            { Icon: RotateCcw, label: "Restore", action: () => handleRestoreFolder(folderMenu.path) },
+            { Icon: Trash2, label: "Delete forever", color: "#d9534f", action: () => handleDeleteFolderForever(folderMenu.path) },
+          ] : [
             { Icon: Download, label: "Download", action: () => downloadFolder(folderMenu.name, folderMenu.path) },
             {
               Icon: Star,
@@ -1130,10 +1187,62 @@ export default function AppLayout({
               { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name, folderMenu.path) },
               { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => handleTrashFolder(folderMenu.path) },
             ]),
-          ].map(({ Icon, label, color, action }) => (
+          ]).map(({ Icon, label, color, action }) => (
             <div
               key={label}
               onClick={() => { setFolderMenu(null); action(); }}
+              style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", color: color || theme.text }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            >
+              <Icon size={16} color={color || theme.subText} /> {label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {selMenu && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed", top: selMenu.y, left: selMenu.x, width: "200px",
+            backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
+            zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
+          }}
+        >
+          <div style={{ padding: "8px 18px 6px", fontSize: "12px", color: theme.subText }}>
+            {selectedCount} selected
+          </div>
+          {[
+            ...(view !== "trash" ? [
+              {
+                Icon: Star,
+                label: selectedFiles.every((f) => starred?.has(f.cid)) && selectedFolders.every((i) => starredFolders?.has(folderPathOf(i)))
+                  ? "Remove from starred" : "Add to starred",
+                action: () => toggleStarMany(selectedFiles.map((f) => f.cid), selectedFolders.map(folderPathOf)),
+              },
+              ...(ownedSelection ? [{ Icon: UserPlus, label: "Share", action: openShareForSelection }] : []),
+            ] : []),
+            { Icon: Download, label: "Download", action: () => { downloadSelection(); clearSelection(); } },
+            ...(view === "trash" ? [
+              { Icon: RotateCcw, label: "Restore", action: () => { handleBulkRestore(selectedFiles, selectedFolders.map(folderPathOf)); clearSelection(); } },
+              { Icon: Trash2, label: "Delete forever", color: "#d9534f", action: () => { handleBulkDelete(selectedFiles, selectedFolders.map(folderPathOf)); clearSelection(); } },
+            ] : [
+              {
+                Icon: Trash2, label: "Move to trash", color: "#d9534f",
+                action: () => {
+                  handleBulkTrash(
+                    selectedFiles.filter((f) => f.is_owner),
+                    selectedFolders.filter((i) => !i.shared).map(folderPathOf)
+                  );
+                  clearSelection();
+                },
+              },
+            ]),
+          ].map(({ Icon, label, color, action }) => (
+            <div
+              key={label}
+              onClick={() => { setSelMenu(null); action(); }}
               style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", color: color || theme.text }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
@@ -1163,10 +1272,14 @@ export default function AppLayout({
           API_BASE_URL={API_BASE_URL}
           onClose={() => setShareFile(null)}
           onShare={shareFile.folder
-            ? (_cid, recipient, name) => handleShareFolder(shareFile.path, recipient, name)
+            ? (_cid, recipient) => handleShareCids(
+                shareFile.cids,
+                recipient,
+                shareFile.selection ? `${shareFile.cids.length} file(s)` : `the folder "${shareFile.filename}"`
+              )
             : handleShare}
           onUnshare={shareFile.folder
-            ? (_cid, addr) => handleUnshareFolder(shareFile.path, addr)
+            ? (_cid, addr) => handleUnshareCids(shareFile.cids, addr)
             : handleUnshare}
           darkMode={darkMode}
         />

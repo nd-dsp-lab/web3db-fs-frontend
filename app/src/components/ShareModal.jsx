@@ -105,7 +105,9 @@ export default function ShareModal({
 
         {file.folder && (
           <div style={{ fontSize: "12px", color: t.subText, marginTop: "-12px", marginBottom: "16px" }}>
-            Shares the {file.cids.length} file(s) currently in this folder — files added later aren’t shared automatically.
+            {file.selection
+              ? `Shares the ${file.cids.length} selected file(s), including files inside selected folders.`
+              : `Shares the ${file.cids.length} file(s) currently in this folder — files added later aren’t shared automatically.`}
           </div>
         )}
 
