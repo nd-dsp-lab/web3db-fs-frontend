@@ -638,30 +638,30 @@ function App() {
     await submitUpload(endpoint, formData, inputFiles.length, inputFiles[0].name, () => { e.target.value = null; });
   };
 
-  // Desktop drag-and-drop: single file goes through /upload, several files
-  // through /upload-folder (one batch transaction), all into currentPath
-  const handleDropUpload = async (droppedFiles) => {
+  // Desktop drag-and-drop: items are [{ file, rel }] where rel keeps any
+  // dropped-folder structure ("docs/sub/a.txt"). A single loose file goes
+  // through /upload; everything else through /upload-folder (one batch tx).
+  const handleDropUpload = async (items) => {
     if (!account) { toast.info("Sign in first"); return; }
-    const files = [...droppedFiles];
-    if (!files.length) return;
+    if (!items.length) return;
 
     const formData = new FormData();
     formData.append("user_address", account);
 
     let endpoint;
-    if (files.length === 1) {
+    if (items.length === 1 && !items[0].rel.includes("/")) {
       endpoint = "/upload";
-      formData.append("file", files[0]);
+      formData.append("file", items[0].file);
       formData.append("folder_path", currentPath);
     } else {
       endpoint = "/upload-folder";
-      for (const f of files) {
-        const fullPath = currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`;
-        formData.append("files", f);
+      for (const { file, rel } of items) {
+        const fullPath = currentPath === "/" ? `/${rel}` : `${currentPath}/${rel}`;
+        formData.append("files", file);
         formData.append("paths", fullPath);
       }
     }
-    await submitUpload(endpoint, formData, files.length, files[0].name);
+    await submitUpload(endpoint, formData, items.length, items[0].file.name);
   };
 
   const handleDeleteFolder = async (folderPath) => {

@@ -162,7 +162,28 @@ export default function AppLayout({
   const onDragOverContent = (e) => {
     if (isExternalDrag(e)) e.preventDefault(); // required to allow the drop
   };
-  const onExternalDrop = (e) => {
+  // Recursively read a dropped FileSystemEntry (file or directory) into
+  // [{ file, rel }], where rel keeps the folder structure ("docs/sub/a.txt")
+  const readAllEntries = (reader) => new Promise((resolve, reject) => {
+    const all = [];
+    const step = () => reader.readEntries((batch) => {
+      if (!batch.length) return resolve(all);
+      all.push(...batch);
+      step(); // readEntries returns at most ~100 per call
+    }, reject);
+    step();
+  });
+  const collectEntry = async (entry, prefix, out) => {
+    if (entry.isFile) {
+      const file = await new Promise((res, rej) => entry.file(res, rej));
+      out.push({ file, rel: prefix + entry.name });
+    } else if (entry.isDirectory) {
+      const children = await readAllEntries(entry.createReader());
+      for (const child of children) await collectEntry(child, `${prefix}${entry.name}/`, out);
+    }
+  };
+
+  const onExternalDrop = async (e) => {
     if (!isExternalDrag(e)) return;
     e.preventDefault();
     dragDepth.current = 0;
@@ -171,16 +192,26 @@ export default function AppLayout({
       toast.info("Switch to My Drive to upload by dropping files");
       return;
     }
-    const files = [];
-    let hadFolder = false;
-    for (const item of e.dataTransfer.items || []) {
-      const entry = item.webkitGetAsEntry?.();
-      if (entry?.isDirectory) { hadFolder = true; continue; }
-      const f = item.getAsFile?.();
-      if (f) files.push(f);
+    // Grab entries synchronously — dataTransfer.items dies with the event
+    const entries = [...(e.dataTransfer.items || [])]
+      .map((item) => item.webkitGetAsEntry?.())
+      .filter(Boolean);
+    if (!entries.length) {
+      // Browser without the entry API: plain files only
+      const files = [...(e.dataTransfer.files || [])].map((f) => ({ file: f, rel: f.name }));
+      if (files.length) handleDropUpload(files);
+      return;
     }
-    if (hadFolder) toast.info("Folders can't be dropped — use New → Folder upload");
-    if (files.length) handleDropUpload(files);
+    const out = [];
+    try {
+      for (const entry of entries) await collectEntry(entry, "", out);
+    } catch (err) {
+      console.error("Reading dropped items failed:", err);
+      toast.error("Could not read the dropped folder");
+      return;
+    }
+    if (out.length) handleDropUpload(out);
+    else toast.info("Dropped folder is empty");
   };
 
   // --- BACKGROUND RIGHT-CLICK MENU (New folder / uploads) ---
