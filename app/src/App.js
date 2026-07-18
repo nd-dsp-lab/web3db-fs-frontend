@@ -421,6 +421,29 @@ function App() {
       .filter((f) => f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/"))
       .map((f) => f.cid);
 
+  // Aggregate stats for the folder details panel; covers owned folders and
+  // folders shared to this user (paths are the owner's either way).
+  const folderStatsOf = (folderPath) => {
+    const inFolder = files.filter((f) => !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/"));
+    const subfolders = new Set();
+    for (const f of inFolder) {
+      const rest = fullPathOf(f).slice(folderPath.length + 1);
+      const slash = rest.indexOf("/");
+      if (slash !== -1) subfolders.add(rest.slice(0, slash));
+    }
+    const timestamps = inFolder.map((f) => f.timestamp || 0).filter(Boolean);
+    return {
+      fileCount: inFolder.length,
+      folderCount: subfolders.size,
+      size: inFolder.reduce((s, f) => s + (f.size || 0), 0),
+      earliest: timestamps.length ? Math.min(...timestamps) : null,
+      latest: timestamps.length ? Math.max(...timestamps) : null,
+      owned: inFolder.some((f) => f.is_owner),
+      owner: inFolder.find((f) => !f.is_owner)?.owner || null,
+      cids: inFolder.filter((f) => f.is_owner).map((f) => f.cid),
+    };
+  };
+
   const handleShareFolder = async (folderPath, recipient, folderName) => {
     if (!account) return;
     const cids = folderCidsOf(folderPath);
@@ -962,6 +985,7 @@ function App() {
       handleShareFolder={handleShareFolder}
       handleUnshareFolder={handleUnshareFolder}
       folderCidsOf={folderCidsOf}
+      folderStatsOf={folderStatsOf}
       handleUnshare={handleUnshare}
       fileTree={fileTree}
       API_BASE_URL={API_BASE_URL}

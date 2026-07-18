@@ -1,27 +1,42 @@
 import React, { useEffect, useState } from "react";
-import { X, Copy, ExternalLink, Star } from "lucide-react";
+import { X, Copy, ExternalLink, Star, Folder } from "lucide-react";
 import { fileVisual, formatBytes, Thumbnail, hasThumbnailFor } from "./AppLayout";
 
 const short = (addr = "") => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "—");
 
-// Right-side file details card, Drive style. Shows metadata for one file;
-// sharing list comes from the existing /shared-users endpoint.
-export default function DetailsPanel({ file, account, authToken, API_BASE_URL, onClose, theme, toast, isStarred }) {
+// Right-side details card, Drive style. Shows metadata for one file, or
+// aggregate stats for a folder (file may be { type: "folder", name, path,
+// shared }). Sharing lists come from /shared-users and /shared-users-batch.
+export default function DetailsPanel({ file, account, authToken, API_BASE_URL, onClose, theme, toast, isStarred, folderStatsOf }) {
   const [sharedUsers, setSharedUsers] = useState(null); // null = loading
+
+  const isFolder = file?.type === "folder";
+  const stats = isFolder && folderStatsOf ? folderStatsOf(file.path) : null;
 
   useEffect(() => {
     setSharedUsers(null);
-    if (!file || !file.is_owner) return;
+    if (!file) return;
     let cancelled = false;
-    fetch(
-      `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}&user_address=${encodeURIComponent(account)}`,
-      { headers: { "ngrok-skip-browser-warning": "true" } }
-    )
-      .then((r) => r.json())
-      .then((d) => { if (!cancelled) setSharedUsers(d.shared_with || []); })
-      .catch(() => { if (!cancelled) setSharedUsers([]); });
+    const done = (d) => { if (!cancelled) setSharedUsers(d.shared_with || []); };
+    const fail = () => { if (!cancelled) setSharedUsers([]); };
+    if (isFolder) {
+      if (file.shared) return; // recipient view — no shared-with list to show
+      const cids = folderStatsOf ? folderStatsOf(file.path).cids : [];
+      if (!cids.length) { setSharedUsers([]); return; }
+      fetch(`${API_BASE_URL}/shared-users-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({ cids, user_address: account }),
+      }).then((r) => r.json()).then(done).catch(fail);
+    } else {
+      if (!file.is_owner) return;
+      fetch(
+        `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}&user_address=${encodeURIComponent(account)}`,
+        { headers: { "ngrok-skip-browser-warning": "true" } }
+      ).then((r) => r.json()).then(done).catch(fail);
+    }
     return () => { cancelled = true; };
-  }, [file, account, API_BASE_URL]);
+  }, [file, account, API_BASE_URL]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const row = (label, value) => (
     <div style={{ marginBottom: "14px" }}>
@@ -36,10 +51,21 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
       .catch(() => toast.error("Could not copy"));
   };
 
-  const { Icon, color } = file ? fileVisual(file.filename) : { Icon: null, color: null };
+  const { Icon, color } = !file
+    ? { Icon: null, color: null }
+    : isFolder
+    ? { Icon: Folder, color: "#5F6368" }
+    : fileVisual(file.filename);
   const ext = file?.filename?.includes(".") ? file.filename.split(".").pop().toUpperCase() : "FILE";
   const inTrash = (file?.folder_path || "").startsWith("/.trash");
-  const location = !file ? "" : inTrash ? "Trash" : (file.folder_path === "/" || !file.folder_path) ? "My Drive" : file.folder_path;
+  const folderParent = isFolder ? file.path.slice(0, file.path.lastIndexOf("/")) || "/" : null;
+  const location = !file ? ""
+    : isFolder ? (file.shared ? "Shared with me" : folderParent === "/" ? "My Drive" : folderParent)
+    : inTrash ? "Trash"
+    : (file.folder_path === "/" || !file.folder_path) ? "My Drive" : file.folder_path;
+  const fmtDate = (ts) => ts
+    ? new Date(ts * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+    : "—";
 
   return (
     <aside style={{
@@ -51,7 +77,7 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
         <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
           {file && <Icon size={18} color={color} style={{ flexShrink: 0 }} />}
           <span style={{ fontSize: "15px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {file ? file.filename : "Details"}
+            {file ? (isFolder ? file.name : file.filename) : "Details"}
           </span>
           {file && isStarred && <Star size={14} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
         </div>
@@ -71,6 +97,36 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
         <div style={{ color: theme.subText, fontSize: "13px", textAlign: "center", padding: "40px 0" }}>
           Select a file to see its details.
         </div>
+      ) : isFolder ? (
+        <>
+          <div style={{
+            height: "160px", borderRadius: "12px", backgroundColor: theme.tile, marginBottom: "18px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Folder size={56} color="#5F6368" strokeWidth={1.2} />
+          </div>
+
+          {row("Type", "Folder")}
+          {row("Contents", `${stats.fileCount} file(s)` + (stats.folderCount ? `, ${stats.folderCount} folder(s)` : ""))}
+          {row("Size", stats.size ? formatBytes(stats.size) : "—")}
+          {row("Created", fmtDate(stats.earliest))}
+          {row("Modified", fmtDate(stats.latest))}
+          {row("Owner", file.shared ? short(stats.owner) : "You")}
+          {row("Location", location)}
+
+          <div style={{ fontSize: "12px", color: theme.subText, margin: "6px 0 8px" }}>Who has access</div>
+          {file.shared ? (
+            <div style={{ fontSize: "13px" }}>Shared with you by {short(stats.owner)}</div>
+          ) : sharedUsers === null ? (
+            <div style={{ fontSize: "13px", color: theme.subText }}>Loading…</div>
+          ) : sharedUsers.length === 0 ? (
+            <div style={{ fontSize: "13px", color: theme.subText }}>Only you</div>
+          ) : (
+            sharedUsers.map((addr) => (
+              <div key={addr} style={{ fontSize: "13px", fontFamily: "monospace", marginBottom: "4px" }}>{short(addr)}</div>
+            ))
+          )}
+        </>
       ) : (
         <>
           <div style={{

@@ -93,7 +93,7 @@ export default function AppLayout({
   account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
-  handleShare, handleUnshare, handleShareFolder, handleUnshareFolder, folderCidsOf, fileTree, API_BASE_URL,
+  handleShare, handleUnshare, handleShareFolder, handleUnshareFolder, folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete,
@@ -1056,7 +1056,10 @@ export default function AppLayout({
             onClose={() => setDetailsOpen(false)}
             theme={theme}
             toast={toast}
-            isStarred={detailsFile ? starred?.has(detailsFile.cid) : false}
+            isStarred={detailsFile
+              ? (detailsFile.type === "folder" ? starredFolders?.has(detailsFile.path) : starred?.has(detailsFile.cid))
+              : false}
+            folderStatsOf={folderStatsOf}
           />
         )}
         </div>
@@ -1100,6 +1103,11 @@ export default function AppLayout({
               Icon: Star,
               label: starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred",
               action: () => toggleStarFolder(folderMenu.path),
+            },
+            {
+              Icon: Info,
+              label: "Folder details",
+              action: () => openDetails({ type: "folder", name: folderMenu.name, path: folderMenu.path, shared: folderMenu.shared }),
             },
             // Owner-only actions hidden on folders shared to this user
             ...(folderMenu.shared ? [] : [
