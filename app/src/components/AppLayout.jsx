@@ -3,7 +3,7 @@ import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown,
+  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
@@ -91,7 +91,7 @@ const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: 
 
 export default function AppLayout({
   account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
-  uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
+  uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
@@ -102,6 +102,7 @@ export default function AppLayout({
   const [draggedFile, setDraggedFile] = useState(null);
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
+  const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
@@ -193,8 +194,8 @@ export default function AppLayout({
   };
 
   useEffect(() => {
-    if (!bgMenu) return;
-    const close = () => setBgMenu(null);
+    if (!bgMenu && !folderMenu) return;
+    const close = () => { setBgMenu(null); setFolderMenu(null); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
@@ -202,7 +203,7 @@ export default function AppLayout({
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", onKey);
     };
-  }, [bgMenu]);
+  }, [bgMenu, folderMenu]);
 
   // --- RUBBER-BAND SELECTION ---
   // Drag from empty content-area background to draw a selection box; file
@@ -335,6 +336,20 @@ export default function AppLayout({
     }
   };
 
+  const promptRenameFolder = (folderName) => {
+    const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
+    const newName = window.prompt("New folder name", folderName)?.trim();
+    if (!newName || newName === folderName) return;
+    if (newName.includes("/")) { toast.error("Folder name can't contain /"); return; }
+    handleRenameFolder(folderPath, newName);
+  };
+
+  const openMenuForFolder = (e, folderName) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFolderMenu({ x: e.clientX, y: e.clientY, name: folderName });
+  };
+
   const navigateInto = (folderName) => {
     setCurrentPath(currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`);
   };
@@ -396,8 +411,8 @@ export default function AppLayout({
 
   const MoreButton = ({ item, visible }) => (
     <button
-      onClick={(e) => { e.stopPropagation(); item.type === "file" ? openMenuForFile(e, item) : confirmDeleteFolder(item.name); }}
-      title={item.type === "file" ? "More actions" : "Delete folder"}
+      onClick={(e) => { e.stopPropagation(); item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item.name); }}
+      title="More actions"
       style={{
         background: "none", border: "none", cursor: "pointer", color: theme.subText,
         borderRadius: "50%", width: "30px", height: "30px", display: "flex",
@@ -405,7 +420,7 @@ export default function AppLayout({
         opacity: visible ? 1 : 0, transition: "opacity 0.1s",
       }}
     >
-      {item.type === "file" ? <MoreVertical size={17} /> : <Trash2 size={16} />}
+      <MoreVertical size={17} />
     </button>
   );
 
@@ -803,6 +818,7 @@ export default function AppLayout({
                             key={key}
                             data-noselect="true"
                             onClick={() => navigateInto(item.name)}
+                            onContextMenu={(e) => openMenuForFolder(e, item.name)}
                             onDragOver={(e) => e.preventDefault()}
                             onDrop={(e) => onFolderDrop(e, item.name)}
                             onMouseEnter={() => setHoveredKey(key)}
@@ -919,7 +935,7 @@ export default function AppLayout({
                         onDragStart={() => item.type === "file" && onFileDragStart(item)}
                         onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
                         onDrop={(e) => item.type === "folder" && onFolderDrop(e, item.name)}
-                        onContextMenu={(e) => item.type === "file" && openMenuForFile(e, item)}
+                        onContextMenu={(e) => item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item.name)}
                         onMouseEnter={() => setHoveredKey(key)}
                         onMouseLeave={() => setHoveredKey(null)}
                         style={{
@@ -1005,6 +1021,32 @@ export default function AppLayout({
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
             >
               <Icon size={17} color={theme.subText} /> {label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {folderMenu && (
+        <div
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed", top: folderMenu.y, left: folderMenu.x, width: "180px",
+            backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
+            zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
+          }}
+        >
+          {[
+            { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name) },
+            { Icon: Trash2, label: "Delete", color: "#d9534f", action: () => confirmDeleteFolder(folderMenu.name) },
+          ].map(({ Icon, label, color, action }) => (
+            <div
+              key={label}
+              onClick={() => { setFolderMenu(null); action(); }}
+              style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", color: color || theme.text }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            >
+              <Icon size={16} color={color || theme.subText} /> {label}
             </div>
           ))}
         </div>

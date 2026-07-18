@@ -463,31 +463,39 @@ function App() {
   };
 
   // --- BULK ACTIONS (multi-select) ---
-  // No batch move on the contract, so bulk trash/restore sign one tx per
-  // file, sequentially, with progress in a single loading toast.
-  const runSequentialMoves = async (items, label, pathFor) => {
-    const tId = toast.loading(`${label} 0/${items.length}…`);
-    let done = 0;
+  // One moveFiles(cids, newPaths) contract call — a single signature moves
+  // any number of files (bulk trash/restore, folder rename).
+  const runBatchMove = async (items, label, pathFor) => {
+    const tId = toast.loading(`${label} ${items.length} file(s)…`);
     try {
-      for (const f of items) {
-        toast.update(tId, `${label} ${done + 1}/${items.length}…`, "loading");
-        await moveTx(f.cid, pathFor(f)); // no tId: keep the progress label during signing
-        done++;
+      const response = await fetch(`${API_BASE_URL}/move-batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({
+          user_address: account,
+          cids: items.map((f) => f.cid),
+          new_paths: items.map((f) => pathFor(f)),
+        }),
+      });
+      const data = await response.json();
+      if (!data.transaction) {
+        console.error("Batch move prepare failed:", data);
+        toast.update(tId, `${label} failed. Check console for details.`, "error");
+        return;
       }
-      toast.update(tId, `${label.replace(/ing/, "ed")} ${done} file(s)`, "success");
+      await signAndVerifyTransaction(data.transaction, tId);
+      toast.update(tId, `${label.replace(/ing/, "ed")} ${data.count} file(s)`, "success");
+      retrieveFiles();
     } catch (err) {
-      console.error("Bulk move error:", err);
-      const msg = err?.code === 4001 ? "stopped — transaction rejected" : `failed: ${err?.message || err}`;
-      toast.update(tId, `${done}/${items.length} done, then ${msg}`, done > 0 ? "info" : "error");
+      reportTxError(label, err, tId);
     }
-    if (done > 0) retrieveFiles();
   };
 
   const handleBulkTrash = (items) =>
-    runSequentialMoves(items, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
+    runBatchMove(items, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
 
   const handleBulkRestore = (items) =>
-    runSequentialMoves(items, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length) || `/${f.filename}`);
+    runBatchMove(items, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length) || `/${f.filename}`);
 
   // Bulk delete-forever is a single cleanFolder(cids) transaction
   const handleBulkDelete = async (items) => {
@@ -704,6 +712,37 @@ function App() {
     setEmptyFolders(prev => persistEmptyFolders(new Set(prev).add(newPath)));
   };
 
+  // --- FOLDER RENAME ---
+  // Paths live on-chain per file, so renaming a folder moves every owned
+  // file under it — one moveFiles tx, one signature. Empty folders are
+  // local-only: just rewrite their paths in the set.
+  const handleRenameFolder = async (folderPath, newName) => {
+    const parent = folderPath.slice(0, folderPath.lastIndexOf("/"));
+    const newPath = `${parent}/${newName}`;
+    if (newPath === folderPath) return;
+
+    const rewriteEmptyFolders = () => setEmptyFolders(prev => {
+      const next = new Set();
+      for (const p of prev) {
+        if (p === folderPath) next.add(newPath);
+        else if (p.startsWith(folderPath + "/")) next.add(newPath + p.slice(folderPath.length));
+        else next.add(p);
+      }
+      return persistEmptyFolders(next);
+    });
+
+    const affected = files.filter((f) =>
+      f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/")
+    );
+    if (affected.length === 0) {
+      rewriteEmptyFolders();
+      toast.success("Folder renamed");
+      return;
+    }
+    await runBatchMove(affected, "Renaming", (f) => newPath + fullPathOf(f).slice(folderPath.length));
+    rewriteEmptyFolders();
+  };
+
   return (
     <>
     <ToastStack toasts={toasts} dismiss={dismissToast} darkMode={darkMode} />
@@ -719,6 +758,7 @@ function App() {
       handleDropUpload={handleDropUpload}
       setUploadMode={setUploadMode}
       handleCreateFolder={handleCreateFolder}
+      handleRenameFolder={handleRenameFolder}
       handleMove={handleMove}
       handleDelete={handleDelete}
       handleTrash={handleTrash}
