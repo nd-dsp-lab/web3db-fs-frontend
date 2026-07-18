@@ -31,19 +31,19 @@ function App() {
   const dismissToast = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
   const pushToast = useCallback((message, type = "info", opts = {}) => {
     const id = ++toastSeq.current;
-    setToasts((t) => [...t, { id, message, type, action: opts.action }]);
+    setToasts((t) => [...t, { id, message, type, action: opts.action, progress: opts.progress ?? null }]);
     if (type !== "loading") setTimeout(() => dismissToast(id), opts.duration || 5000);
     return id;
   }, [dismissToast]);
   const updateToast = useCallback((id, message, type, opts = {}) => {
-    setToasts((t) => t.map((x) => (x.id === id ? { ...x, message, type, action: opts.action } : x)));
+    setToasts((t) => t.map((x) => (x.id === id ? { ...x, message, type, action: opts.action, progress: opts.progress ?? null } : x)));
     if (type !== "loading") setTimeout(() => dismissToast(id), opts.duration || 5000);
   }, [dismissToast]);
   const toast = {
     success: (m, o) => pushToast(m, "success", o),
     error: (m, o) => pushToast(m, "error", o),
     info: (m, o) => pushToast(m, "info", o),
-    loading: (m) => pushToast(m, "loading"),
+    loading: (m, o) => pushToast(m, "loading", o),
     update: updateToast,
     dismiss: dismissToast,
   };
@@ -549,17 +549,38 @@ function App() {
   const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
 
   // --- UPLOAD LOGIC ---
+  // XHR instead of fetch: fetch can't report request-body upload progress
+  const uploadWithProgress = (url, formData, onProgress) =>
+    new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.setRequestHeader("ngrok-skip-browser-warning", "true");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText); } catch { /* non-JSON error body */ }
+        resolve({ ok: xhr.status >= 200 && xhr.status < 300, data });
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload"));
+      xhr.send(formData);
+    });
+
   // Shared by the New-menu inputs and desktop drag-and-drop
   const submitUpload = async (endpoint, formData, count, firstName, onPrepared) => {
-    const tId = toast.loading(count > 1 ? `Uploading ${count} files to IPFS…` : `Uploading "${firstName}"…`);
+    const label = count > 1 ? `Uploading ${count} files` : `Uploading "${firstName}"`;
+    const tId = toast.loading(`${label}… 0%`, { progress: 0 });
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: "POST",
-        body: formData,
-        headers: { "ngrok-skip-browser-warning": "true" }
+      let lastPct = -1;
+      const response = await uploadWithProgress(`${API_BASE_URL}${endpoint}`, formData, (pct) => {
+        if (pct === lastPct) return; // don't re-render on every byte event
+        lastPct = pct;
+        if (pct < 100) toast.update(tId, `${label}… ${pct}%`, "loading", { progress: pct });
+        else toast.update(tId, "Processing on IPFS…", "loading", { progress: 100 });
       });
 
-      const data = await response.json();
+      const data = response.data;
       // Single upload returns {transaction}; batch returns {uploaded_files, skipped_files}
       const txs = data.uploaded_files
         ? data.uploaded_files.map((u) => u.transaction).filter(Boolean)

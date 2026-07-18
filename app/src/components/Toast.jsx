@@ -21,14 +21,14 @@ export default function ToastStack({ toasts, dismiss, darkMode }) {
       position: "fixed", left: "24px", bottom: "24px", zIndex: 20000,
       display: "flex", flexDirection: "column", gap: "10px", maxWidth: "420px",
     }}>
-      {toasts.map(({ id, message, type, action }) => {
+      {toasts.map(({ id, message, type, action, progress }) => {
         const { Icon, color } = ICONS[type] || ICONS.info;
         return (
           <div key={id} style={{
             display: "flex", alignItems: "center", gap: "12px",
-            backgroundColor: bg, color: fg, padding: "12px 16px",
+            backgroundColor: bg, color: fg, padding: progress != null ? "12px 16px 15px" : "12px 16px",
             borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-            fontSize: "14px",
+            fontSize: "14px", position: "relative", overflow: "hidden",
           }}>
             <Icon
               size={18} color={color} style={{ flexShrink: 0 }}
@@ -57,6 +57,18 @@ export default function ToastStack({ toasts, dismiss, darkMode }) {
               >
                 <X size={16} />
               </button>
+            )}
+            {progress != null && (
+              <div style={{
+                position: "absolute", left: 0, right: 0, bottom: 0, height: "3px",
+                backgroundColor: darkMode ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.2)",
+              }}>
+                <div style={{
+                  width: `${progress}%`, height: "100%",
+                  backgroundColor: darkMode ? "#0B57D0" : "#8AB4F8",
+                  transition: "width 0.15s ease",
+                }} />
+              </div>
             )}
           </div>
         );
