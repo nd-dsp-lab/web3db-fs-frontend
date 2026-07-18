@@ -132,6 +132,51 @@ function App() {
     return wallet.getEthereumProvider();
   }, [wallet]);
 
+  // --- DOWNLOAD AUTH TOKEN ---
+  // Downloads and thumbnails are permission-checked server-side. The wallet
+  // signs a login message once (per 24h); the backend returns an HMAC token
+  // tied to the address, cached in localStorage.
+  const [authToken, setAuthToken] = useState(null);
+  const authRequested = useRef(new Set());
+  useEffect(() => {
+    if (!account || !wallet) { setAuthToken(null); return; }
+    const key = `authToken:${account.toLowerCase()}`;
+    try {
+      const cached = JSON.parse(localStorage.getItem(key));
+      if (cached?.token && cached.expires * 1000 > Date.now() + 60000) {
+        setAuthToken(cached.token);
+        return;
+      }
+    } catch { /* fall through to re-sign */ }
+    if (authRequested.current.has(account)) return; // one prompt per address per session
+    authRequested.current.add(account);
+    (async () => {
+      try {
+        const timestamp = Math.floor(Date.now() / 1000);
+        const message = `Web3FS sign-in\nAddress: ${account.toLowerCase()}\nTimestamp: ${timestamp}`;
+        const provider = await getProvider();
+        const hexMessage = "0x" + Array.from(new TextEncoder().encode(message))
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
+        const signature = await provider.request({
+          method: "personal_sign",
+          params: [hexMessage, account],
+        });
+        const res = await fetch(`${API_BASE_URL}/auth/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+          body: JSON.stringify({ address: account, timestamp, signature }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.token) throw new Error(data.error || "Token request failed");
+        localStorage.setItem(key, JSON.stringify(data));
+        setAuthToken(data.token);
+      } catch (err) {
+        console.error("Download auth failed:", err);
+        toast.error("Sign-in verification failed — downloads and previews disabled");
+      }
+    })();
+  }, [account, wallet, API_BASE_URL, getProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // --- GAS DRIP for fresh embedded wallets ---
   const fundRequested = useRef(new Set());
   useEffect(() => {
@@ -643,6 +688,7 @@ function App() {
     <ToastStack toasts={toasts} dismiss={dismissToast} darkMode={darkMode} />
     <AppLayout
       account={account}
+      authToken={authToken}
       connectWallet={connectWallet}
       disconnectWallet={disconnectWallet}
       displayItems={displayItems}

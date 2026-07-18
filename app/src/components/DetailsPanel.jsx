@@ -6,7 +6,7 @@ const short = (addr = "") => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` :
 
 // Right-side file details card, Drive style. Shows metadata for one file;
 // sharing list comes from the existing /shared-users endpoint.
-export default function DetailsPanel({ file, account, API_BASE_URL, onClose, theme, toast, isStarred }) {
+export default function DetailsPanel({ file, account, authToken, API_BASE_URL, onClose, theme, toast, isStarred }) {
   const [sharedUsers, setSharedUsers] = useState(null); // null = loading
 
   useEffect(() => {
@@ -82,6 +82,7 @@ export default function DetailsPanel({ file, account, API_BASE_URL, onClose, the
                 cid={file.cid}
                 filename={file.filename}
                 API_BASE_URL={API_BASE_URL}
+                authToken={authToken}
                 fallback={<Icon size={56} color={color} strokeWidth={1.2} />}
               />
             ) : (

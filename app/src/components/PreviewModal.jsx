@@ -31,7 +31,7 @@ function previewKind(filename = "", mime = "") {
   return "none";
 }
 
-export default function PreviewModal({ file, account, API_BASE_URL, onClose, onDownload, darkMode }) {
+export default function PreviewModal({ file, account, authToken, API_BASE_URL, onClose, onDownload, darkMode }) {
   const [state, setState] = useState({ status: "loading" }); // loading | ready | error
   const [objectUrl, setObjectUrl] = useState(null);
   const [textContent, setTextContent] = useState(null);
@@ -42,9 +42,10 @@ export default function PreviewModal({ file, account, API_BASE_URL, onClose, onD
     let url = null;
     (async () => {
       try {
+        if (!authToken) { setState({ status: "error", message: "Verifying sign-in — reopen in a moment" }); return; }
         const res = await fetch(
-          `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}?user_address=${encodeURIComponent(account)}`,
-          { headers: { "ngrok-skip-browser-warning": "true" } }
+          `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`,
+          { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
         );
         if (!res.ok) throw new Error(`Preview failed (${res.status})`);
         const blob = typedBlob(await res.blob(), file.filename);
@@ -70,7 +71,7 @@ export default function PreviewModal({ file, account, API_BASE_URL, onClose, onD
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [file, account, API_BASE_URL]);
+  }, [file, account, authToken, API_BASE_URL]);
 
   const handleKey = useCallback((e) => { if (e.key === "Escape") onClose(); }, [onClose]);
   useEffect(() => {

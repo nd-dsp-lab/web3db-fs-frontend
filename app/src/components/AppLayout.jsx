@@ -50,12 +50,13 @@ const thumbCache = new Map();
 
 export function hasThumbnailFor(filename) { return hasThumbnail(filename); }
 
-export function Thumbnail({ cid, filename, API_BASE_URL, fallback }) {
+export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) {
   const [src, setSrc] = useState(() => thumbCache.get(cid) || null);
   useEffect(() => {
     if (thumbCache.has(cid)) { setSrc(thumbCache.get(cid)); return; }
+    if (!authToken) return; // wait for download auth before requesting
     let cancelled = false;
-    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "ngrok-skip-browser-warning": "true" } })
+    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } })
       .then((r) => (r.ok && r.headers.get("content-type")?.startsWith("image/") ? r.blob() : Promise.reject()))
       .then((blob) => {
         const url = URL.createObjectURL(blob);
@@ -67,7 +68,7 @@ export function Thumbnail({ cid, filename, API_BASE_URL, fallback }) {
         if (!cancelled) setSrc("failed");
       });
     return () => { cancelled = true; };
-  }, [cid, API_BASE_URL]);
+  }, [cid, API_BASE_URL, authToken]);
 
   if (!src || src === "failed") return fallback;
   return <img src={src} alt={filename} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }} />;
@@ -86,7 +87,7 @@ const STORAGE_QUOTA = 1024 ** 3; // 1 GB nominal quota for the usage bar
 const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred", trash: "Trash" };
 
 export default function AppLayout({
-  account, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
+  account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
   uploadFile, setUploadMode, handleCreateFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
@@ -250,10 +251,14 @@ export default function AppLayout({
       toast.info("Sign in first");
       return;
     }
+    if (!authToken) {
+      toast.info("Verifying sign-in — try again in a moment");
+      return;
+    }
     try {
       const res = await fetch(
-        `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}?user_address=${encodeURIComponent(account)}`,
-        { headers: { "ngrok-skip-browser-warning": "true" } }
+        `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`,
+        { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
       );
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
@@ -793,6 +798,7 @@ export default function AppLayout({
                                   cid={item.cid}
                                   filename={item.filename}
                                   API_BASE_URL={API_BASE_URL}
+                                  authToken={authToken}
                                   fallback={<Icon size={44} color={color} strokeWidth={1.2} />}
                                 />
                               ) : (
@@ -904,6 +910,7 @@ export default function AppLayout({
           <DetailsPanel
             file={detailsFile}
             account={account}
+            authToken={authToken}
             API_BASE_URL={API_BASE_URL}
             onClose={() => setDetailsOpen(false)}
             theme={theme}
@@ -965,6 +972,7 @@ export default function AppLayout({
         <PreviewModal
           file={previewFile}
           account={account}
+          authToken={authToken}
           API_BASE_URL={API_BASE_URL}
           onClose={() => setPreviewFile(null)}
           onDownload={downloadFile}
