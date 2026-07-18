@@ -91,7 +91,7 @@ const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: 
 
 export default function AppLayout({
   account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
-  uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleDelete, handleDeleteFolder, handleMove,
+  uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
@@ -329,10 +329,36 @@ export default function AppLayout({
     setContextMenu({ x: e.clientX, y: e.clientY, file: item });
   };
 
-  const confirmDeleteFolder = (folderName) => {
+  // Folder delete moves contents to trash (batch move, one signature);
+  // permanent deletion happens from the Trash view.
+  const trashFolder = (folderName) => {
     const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
-    if (window.confirm(`Permanently delete folder "${folderName}" and all its contents? (Folders skip the trash.)`)) {
-      handleDeleteFolder(folderPath);
+    handleTrashFolder(folderPath);
+  };
+
+  const downloadFolder = async (folderName) => {
+    if (!authToken) { toast.info("Verifying sign-in — try again in a moment"); return; }
+    const folderPath = currentPath === "/" ? `/${folderName}` : `${currentPath}/${folderName}`;
+    const tId = toast.loading(`Zipping "${folderName}"…`);
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/download-folder?path=${encodeURIComponent(folderPath)}`,
+        { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Download failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${folderName}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.update(tId, `Downloaded "${folderName}.zip"`, "success");
+    } catch (err) {
+      toast.update(tId, err.message || "Download failed", "error");
     }
   };
 
@@ -1036,8 +1062,9 @@ export default function AppLayout({
           }}
         >
           {[
+            { Icon: Download, label: "Download", action: () => downloadFolder(folderMenu.name) },
             { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name) },
-            { Icon: Trash2, label: "Delete", color: "#d9534f", action: () => confirmDeleteFolder(folderMenu.name) },
+            { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => trashFolder(folderMenu.name) },
           ].map(({ Icon, label, color, action }) => (
             <div
               key={label}

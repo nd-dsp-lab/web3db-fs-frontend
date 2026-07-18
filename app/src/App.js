@@ -589,13 +589,12 @@ function App() {
       });
 
       const data = response.data;
-      // Single upload returns {transaction}; batch returns {uploaded_files, skipped_files}
-      const txs = data.uploaded_files
-        ? data.uploaded_files.map((u) => u.transaction).filter(Boolean)
-        : data.transaction ? [data.transaction] : [];
+      // Both endpoints return one transaction: single uploadFile, or one
+      // uploadFiles batch covering the whole folder
+      const uploadedCount = data.uploaded_files?.length || 1;
       const skipped = data.skipped_files?.length || 0;
 
-      if (!response.ok || txs.length === 0) {
+      if (!response.ok || !data.transaction) {
         console.error("Upload prepare failed:", data);
         if (data.reason === "file_already_exists") {
           toast.update(tId, "This exact file already exists (identical content), owned by " + data.owner, "error", { duration: 8000 });
@@ -607,12 +606,9 @@ function App() {
         return;
       }
       onPrepared?.();
-      for (let i = 0; i < txs.length; i++) {
-        if (txs.length > 1) toast.update(tId, `Signing ${i + 1}/${txs.length}…`, "loading");
-        await signAndVerifyTransaction(txs[i], txs.length === 1 ? tId : undefined);
-      }
+      await signAndVerifyTransaction(data.transaction, tId);
       const skippedNote = skipped > 0 ? ` (${skipped} skipped — already exist)` : "";
-      toast.update(tId, (txs.length > 1 ? `Uploaded ${txs.length} files` : `Uploaded "${firstName}"`) + skippedNote, "success", { duration: skipped ? 8000 : undefined });
+      toast.update(tId, (uploadedCount > 1 ? `Uploaded ${uploadedCount} files` : `Uploaded "${firstName}"`) + skippedNote, "success", { duration: skipped ? 8000 : undefined });
       retrieveFiles();
     } catch (err) {
       reportTxError("Upload", err, tId);
@@ -712,6 +708,31 @@ function App() {
     setEmptyFolders(prev => persistEmptyFolders(new Set(prev).add(newPath)));
   };
 
+  // --- FOLDER TRASH ---
+  // Move every owned file under the folder to /.trash — one batch tx, one
+  // signature. Restorable from the Trash view (per file or multi-select).
+  const handleTrashFolder = async (folderPath) => {
+    const dropEmptyEntries = () => setEmptyFolders(prev => {
+      const next = new Set();
+      for (const p of prev) {
+        if (p !== folderPath && !p.startsWith(folderPath + "/")) next.add(p);
+      }
+      return persistEmptyFolders(next);
+    });
+
+    const affected = files.filter((f) =>
+      f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/")
+    );
+    if (affected.length === 0) {
+      // Empty folders exist only locally — nothing on-chain to trash
+      dropEmptyEntries();
+      toast.success("Folder deleted");
+      return;
+    }
+    await runBatchMove(affected, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
+    dropEmptyEntries();
+  };
+
   // --- FOLDER RENAME ---
   // Paths live on-chain per file, so renaming a folder moves every owned
   // file under it — one moveFiles tx, one signature. Empty folders are
@@ -759,6 +780,7 @@ function App() {
       setUploadMode={setUploadMode}
       handleCreateFolder={handleCreateFolder}
       handleRenameFolder={handleRenameFolder}
+      handleTrashFolder={handleTrashFolder}
       handleMove={handleMove}
       handleDelete={handleDelete}
       handleTrash={handleTrash}
