@@ -415,7 +415,8 @@ function App() {
   // --- FOLDER SHARE ---
   // Paths are flat on-chain, so sharing a folder grants READ+DOWNLOAD on every
   // owned file currently under it — one grantFiles tx, one signature. Files
-  // added to the folder later are NOT auto-shared (snapshot semantics).
+  // uploaded into the folder later inherit the share (backend prepares extra
+  // grant txs at upload time).
   const folderCidsOf = (folderPath) =>
     files
       .filter((f) => f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/"))
@@ -435,7 +436,18 @@ function App() {
       if (slash !== -1) subfolders.add(rest.slice(0, slash));
     }
     const timestamps = inFolder.map((f) => f.timestamp || 0).filter(Boolean);
+    // Folder counts as shared with the users granted on ALL of its owned
+    // files — same intersection the backend uses for share inheritance
+    const ownedInFolder = inFolder.filter((f) => f.is_owner);
+    let sharedWith = [];
+    if (ownedInFolder.length > 0) {
+      sharedWith = ownedInFolder.reduce(
+        (acc, f) => acc.filter((u) => (f.shared_with || []).includes(u)),
+        [...(ownedInFolder[0].shared_with || [])]
+      );
+    }
     return {
+      sharedWith,
       fileCount: inFolder.length,
       folderCount: subfolders.size,
       size: inFolder.reduce((s, f) => s + (f.size || 0), 0),

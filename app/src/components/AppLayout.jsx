@@ -10,6 +10,20 @@ import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
 
+// Drive-style shared-folder icon: folder with a small people glyph punched
+// out in the tile's background color (lucide has no combined icon)
+const SharedFolderIcon = ({ size = 20, color, badge }) => (
+  <span style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+    <Folder size={size} fill={color} color={color} />
+    <Users
+      size={Math.round(size * 0.5)}
+      color={badge}
+      strokeWidth={2.5}
+      style={{ position: "absolute", left: "50%", top: "58%", transform: "translate(-50%, -50%)" }}
+    />
+  </span>
+);
+
 // Pick an icon + accent color from the file extension, similar to how
 // Drive colors PDFs red, sheets green, etc.
 export function fileVisual(filename = "") {
@@ -369,6 +383,15 @@ export default function AppLayout({
   // in the Starred view they carry their full path directly.
   const folderPathOf = (item) =>
     item.fullPath || (currentPath === "/" ? `/${item.name}` : `${currentPath}/${item.name}`);
+
+  // Shared-folder detection: folders shared *to* me are always shared (-1 =
+  // no recipient count); owned folders count as shared when their inherited
+  // share set (intersection across their files) is non-empty
+  const folderSharedCount = (item) => {
+    if (item.shared) return -1;
+    if (!folderStatsOf) return 0;
+    return folderStatsOf((item.trash ? "/.trash" : "") + folderPathOf(item)).sharedWith?.length || 0;
+  };
 
   const downloadFolder = async (folderName, folderPath) => {
     if (!authToken) { toast.info("Verifying sign-in — try again in a moment"); return; }
@@ -922,6 +945,7 @@ export default function AppLayout({
                       {folders.map((item) => {
                         const key = `folder-${item.name}`;
                         const selKey = folderKeyOf(item);
+                        const shCount = folderSharedCount(item);
                         return (
                           <div
                             key={key}
@@ -942,7 +966,13 @@ export default function AppLayout({
                             }}
                           >
                             <SelectBox cid={selKey} visible={hoveredKey === key || someSelected} />
-                            <Folder size={20} fill={theme.subText} color={theme.subText} style={{ flexShrink: 0 }} />
+                            {shCount !== 0 ? (
+                              <span title={shCount > 0 ? `Shared with ${shCount}` : "Shared with you"}>
+                                <SharedFolderIcon size={20} color={theme.subText} badge={hoveredKey === key ? theme.tileHover : theme.tile} />
+                              </span>
+                            ) : (
+                              <Folder size={20} fill={theme.subText} color={theme.subText} style={{ flexShrink: 0 }} />
+                            )}
                             <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
                             {starredFolders?.has(folderPathOf(item)) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
                             <MoreButton item={item} visible={hoveredKey === key} />
@@ -1041,6 +1071,7 @@ export default function AppLayout({
                     const key = `${item.type}-${item.cid || item.name}`;
                     const { Icon, color } = item.type === "file" ? fileVisual(item.filename) : { Icon: Folder, color: theme.subText };
                     const sharedCount = Array.isArray(item.shared_with) ? item.shared_with.length : 0;
+                    const folderShCount = item.type === "folder" ? folderSharedCount(item) : 0;
                     return (
                       <tr
                         key={key}
@@ -1071,7 +1102,13 @@ export default function AppLayout({
                             item.type === "folder" ? navigateInto(item) : setPreviewFile(item);
                           }}
                         >
-                          <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
+                          {item.type === "folder" && folderShCount !== 0 ? (
+                            <span title={folderShCount > 0 ? `Shared with ${folderShCount}` : "Shared with you"}>
+                              <SharedFolderIcon size={19} color={color} badge={hoveredKey === key ? theme.hoverRow : theme.card} />
+                            </span>
+                          ) : (
+                            <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
+                          )}
                           {item.name}
                           {((item.type === "file" && starred?.has(item.cid)) ||
                             (item.type === "folder" && starredFolders?.has(folderPathOf(item)))) &&
@@ -1082,7 +1119,9 @@ export default function AppLayout({
                             ? (item.is_owner
                               ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you")
                               : (item.owner ? `Shared by ${item.owner.slice(0, 6)}...${item.owner.slice(-4)}` : "Shared with me"))
-                            : "—"}
+                            : (folderShCount === -1
+                              ? "Shared with you"
+                              : folderShCount > 0 ? `Shared with ${folderShCount}` : item.trash ? "—" : "Only you")}
                         </td>
                         <td style={{ fontSize: "13px", color: theme.subText }}>
                           {item.type === "file" && item.timestamp
