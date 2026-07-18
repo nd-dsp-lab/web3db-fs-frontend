@@ -429,9 +429,15 @@ export default function AppLayout({
     else { setSortBy(key); setSortDir(key === "name" ? "asc" : "desc"); } // newest/largest first feels natural
   };
 
-  // Folders only have names — sort by name, following direction only when sorting by name
+  // Folders sort like files: name directly, size/date from aggregate stats
+  // (total size, latest file timestamp)
   const folders = (displayItems || []).filter((i) => i.type === "folder")
-    .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true, sensitivity: "base" }) * (sortBy === "name" ? dirMul : 1));
+    .map((i) => {
+      if (sortBy === "name" || !folderStatsOf) return i;
+      const s = folderStatsOf(folderPathOf(i));
+      return { ...i, size: s.size, timestamp: s.latest || 0 };
+    })
+    .sort((a, b) => fileCmp(a, b) * dirMul);
   const fileItems = (displayItems || []).filter((i) => i.type === "file")
     .sort((a, b) => fileCmp(a, b) * dirMul);
   const selectedFiles = fileItems.filter((f) => selected.has(f.cid));
