@@ -880,8 +880,27 @@ function App() {
       }
       onPrepared?.();
       await signAndVerifyTransaction(data.transaction, tId);
+
+      // Inherited folder sharing: the destination folder is shared, so the
+      // backend prepared grant txs (one per recipient) for the new files
+      const shareTxs = data.share_transactions || [];
+      let autoShareNote = "";
+      if (shareTxs.length > 0) {
+        try {
+          for (let i = 0; i < shareTxs.length; i++) {
+            toast.update(tId, `Sharing with folder members (${i + 1}/${shareTxs.length})…`, "loading");
+            await signAndVerifyTransaction(shareTxs[i], tId);
+          }
+          const n = data.auto_shared_with.length;
+          autoShareNote = ` — shared with ${n} ${n > 1 ? "people" : "person"}`;
+        } catch (err) {
+          console.error("Inherited share error:", err);
+          pushToast("Uploaded, but sharing with folder members failed", "error");
+        }
+      }
+
       const skippedNote = skipped > 0 ? ` (${skipped} skipped — already exist)` : "";
-      toast.update(tId, (uploadedCount > 1 ? `Uploaded ${uploadedCount} files` : `Uploaded "${firstName}"`) + skippedNote, "success", { duration: skipped ? 8000 : undefined });
+      toast.update(tId, (uploadedCount > 1 ? `Uploaded ${uploadedCount} files` : `Uploaded "${firstName}"`) + autoShareNote + skippedNote, "success", { duration: skipped ? 8000 : undefined });
       retrieveFiles();
     } catch (err) {
       reportTxError("Upload", err, tId);
