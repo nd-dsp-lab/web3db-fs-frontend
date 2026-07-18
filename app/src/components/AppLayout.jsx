@@ -3,7 +3,7 @@ import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info,
+  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
@@ -344,8 +344,25 @@ export default function AppLayout({
     (account ? `${account.slice(0, 6)}...${account.slice(-4)}` : null);
   const avatarLetter = (user?.google?.name || user?.email?.address || account || "?")[0].toUpperCase();
 
-  const folders = (displayItems || []).filter((i) => i.type === "folder");
-  const fileItems = (displayItems || []).filter((i) => i.type === "file");
+  // --- SORTING ---
+  const [sortBy, setSortBy] = useState("name"); // "name" | "date" | "size"
+  const [sortDir, setSortDir] = useState("asc");
+  const dirMul = sortDir === "asc" ? 1 : -1;
+  const fileCmp = {
+    name: (a, b) => (a.filename || a.name || "").localeCompare(b.filename || b.name || "", undefined, { numeric: true, sensitivity: "base" }),
+    date: (a, b) => (a.timestamp || 0) - (b.timestamp || 0),
+    size: (a, b) => (a.size || 0) - (b.size || 0),
+  }[sortBy];
+  const toggleSort = (key) => {
+    if (sortBy === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortBy(key); setSortDir(key === "name" ? "asc" : "desc"); } // newest/largest first feels natural
+  };
+
+  // Folders only have names — sort by name, following direction only when sorting by name
+  const folders = (displayItems || []).filter((i) => i.type === "folder")
+    .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { numeric: true, sensitivity: "base" }) * (sortBy === "name" ? dirMul : 1));
+  const fileItems = (displayItems || []).filter((i) => i.type === "file")
+    .sort((a, b) => fileCmp(a, b) * dirMul);
   const selectedFiles = fileItems.filter((f) => selected.has(f.cid));
   const someSelected = selectedFiles.length > 0;
   const clearSelection = () => setSelected(new Set());
@@ -390,6 +407,20 @@ export default function AppLayout({
     >
       {item.type === "file" ? <MoreVertical size={17} /> : <Trash2 size={16} />}
     </button>
+  );
+
+  // Clickable list-view column header; arrow shows the active sort direction
+  const SortHeader = ({ label, col, style: extra }) => (
+    <th
+      onClick={() => toggleSort(col)}
+      style={{ fontWeight: 500, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap", ...extra }}
+      title={`Sort by ${label.toLowerCase()}`}
+    >
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+        {label}
+        {sortBy === col && (sortDir === "asc" ? <ArrowUp size={13} /> : <ArrowDown size={13} />)}
+      </span>
+    </th>
   );
 
   // Shared by the New button dropdown and the background right-click menu
@@ -689,6 +720,38 @@ export default function AppLayout({
               </button>
             )}
 
+            {/* Sort controls (grid view; list view sorts via column headers) */}
+            {viewMode === "grid" && (
+              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                <select
+                  value={sortBy}
+                  onChange={(e) => { setSortBy(e.target.value); setSortDir(e.target.value === "name" ? "asc" : "desc"); }}
+                  title="Sort by"
+                  style={{
+                    border: `1px solid ${theme.border}`, borderRadius: "999px", padding: "6px 10px",
+                    backgroundColor: "transparent", color: theme.text, fontSize: "13px", cursor: "pointer", outline: "none",
+                  }}
+                >
+                  <option value="name">Name</option>
+                  <option value="date">Uploaded</option>
+                  <option value="size">Size</option>
+                </select>
+                <button
+                  onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                  title={sortDir === "asc" ? "Ascending" : "Descending"}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer", color: theme.subText,
+                    width: "32px", height: "32px", borderRadius: "50%", display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.tile}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  {sortDir === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => setDetailsOpen((o) => !o)}
               title="File details"
@@ -835,16 +898,16 @@ export default function AppLayout({
                         />
                       )}
                     </th>
-                    <th style={{ padding: "10px 8px", fontWeight: 500 }}>Name</th>
+                    <SortHeader label="Name" col="name" style={{ padding: "10px 8px" }} />
                     <th style={{ fontWeight: 500 }}>Sharing</th>
-                    <th style={{ fontWeight: 500 }}>Uploaded</th>
-                    <th style={{ fontWeight: 500 }}>Size</th>
+                    <SortHeader label="Uploaded" col="date" />
+                    <SortHeader label="Size" col="size" />
                     <th style={{ fontWeight: 500 }}>CID</th>
                     <th style={{ width: "48px" }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {displayItems.map((item) => {
+                  {[...folders, ...fileItems].map((item) => {
                     const key = `${item.type}-${item.cid || item.name}`;
                     const { Icon, color } = item.type === "file" ? fileVisual(item.filename) : { Icon: Folder, color: theme.subText };
                     const sharedCount = Array.isArray(item.shared_with) ? item.shared_with.length : 0;
