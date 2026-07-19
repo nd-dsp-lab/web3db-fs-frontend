@@ -7,6 +7,17 @@ import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } fr
 // Trash is a hidden path prefix: "deleting" a file moves it under /.trash
 // (one on-chain move tx), restoring moves it back. No contract changes.
 const TRASH_PREFIX = "/.trash";
+
+// Extension buckets for the search type-filter chips
+const SEARCH_TYPE_EXTS = {
+  pdf: ["pdf"],
+  image: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"],
+  doc: ["doc", "docx", "txt", "md", "rtf", "csv", "xls", "xlsx", "ppt", "pptx"],
+  video: ["mp4", "mov", "avi", "mkv", "webm"],
+  audio: ["mp3", "wav", "ogg", "flac", "m4a"],
+  code: ["js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "h", "java", "json", "html", "css", "sh", "yml", "yaml"],
+  archive: ["zip", "tar", "gz", "rar", "7z"],
+};
 const isTrashed = (f) => (f.folder_path || "/").startsWith(TRASH_PREFIX);
 const fullPathOf = (f) =>
   (f.folder_path === "/" || !f.folder_path) ? `/${f.filename}` : `${f.folder_path}/${f.filename}`;
@@ -21,6 +32,8 @@ function App() {
   const [currentPath, setCurrentPath] = useState("/");
   const [view, setView] = useState("my-drive");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchType, setSearchType] = useState(null); // null | "folder" | key of SEARCH_TYPE_EXTS
+  const [searchScope, setSearchScope] = useState("all"); // "all" | "folder" (current folder subtree)
   const [emptyFolders, setEmptyFolders] = useState(new Set());
   const [uploadMode, setUploadMode] = useState("single");
   const [starred, setStarred] = useState(new Set());
@@ -270,6 +283,11 @@ function App() {
   useEffect(() => {
     if (account) retrieveFiles();
   }, [account, retrieveFiles]);
+
+  // Chips only make sense while a search is active
+  useEffect(() => {
+    if (!searchQuery) { setSearchType(null); setSearchScope("all"); }
+  }, [searchQuery]);
 
   // --- TRANSACTION SIGNING ---
   // Backend endpoints only *prepare* transactions; the user must sign and
@@ -824,9 +842,41 @@ function App() {
   };
   const active = files.filter(f => !isTrashed(f)); // trashed files only show in the Trash view
   const displayItems = searchQuery.length > 0
-    ? active
-        .filter(f => (f.filename || f.name || "").toLowerCase().includes(searchQuery.toLowerCase()))
-        .map(asFileItem)
+    ? (() => {
+        // Search: name match + optional type chip + optional current-folder scope
+        const q = searchQuery.toLowerCase();
+        const scopePrefix = currentPath === "/" ? "/" : currentPath + "/";
+        const inScope = (fullPath) => searchScope !== "folder" || fullPath.startsWith(scopePrefix);
+        const results = [];
+
+        if (searchType !== "folder") {
+          const exts = searchType ? SEARCH_TYPE_EXTS[searchType] || [] : null;
+          for (const f of active) {
+            const name = f.filename || f.name || "";
+            if (!name.toLowerCase().includes(q)) continue;
+            if (!inScope(fullPathOf(f))) continue;
+            if (exts && !exts.includes(name.split(".").pop().toLowerCase())) continue;
+            results.push(asFileItem(f));
+          }
+        }
+
+        if (!searchType || searchType === "folder") {
+          // Folder results: every distinct owned folder path plus local empty folders
+          const folderPaths = new Set(emptyFolders);
+          for (const f of active.filter((x) => x.is_owner)) {
+            const parts = fullPathOf(f).split("/").filter(Boolean);
+            let p = "";
+            for (let i = 0; i < parts.length - 1; i++) { p += "/" + parts[i]; folderPaths.add(p); }
+          }
+          for (const p of folderPaths) {
+            const name = p.slice(p.lastIndexOf("/") + 1);
+            if (p === currentPath) continue; // don't list the folder being searched in
+            if (!name.toLowerCase().includes(q) || !inScope(p + "/")) continue;
+            results.push({ type: "folder", name, fullPath: p });
+          }
+        }
+        return results;
+      })()
     : view === "shared"
     // Shared files keep the owner's paths, so group them into folders and
     // let currentPath drive navigation just like My Drive. Folder items are
@@ -1174,6 +1224,10 @@ function App() {
       setView={setView}
       searchQuery={searchQuery}
       setSearchQuery={setSearchQuery}
+      searchType={searchType}
+      setSearchType={setSearchType}
+      searchScope={searchScope}
+      setSearchScope={setSearchScope}
       darkMode={darkMode}
       toggleTheme={toggleTheme}
       user={user}

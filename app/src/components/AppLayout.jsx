@@ -111,7 +111,7 @@ export default function AppLayout({
   handleShare, handleUnshare, handleShareCids, handleUnshareCids,
   handleRestoreFolder, handleDeleteFolderForever,
   folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
-  view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
+  view, setView, searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove,
 }) {
@@ -468,10 +468,27 @@ export default function AppLayout({
   };
 
   const navigateInto = (item) => {
-    // Shared/trash folders browse within their own views; starred-view
-    // folders navigate back into the drive
+    // Shared/trash folders browse within their own views; starred-view and
+    // search-result folders navigate back into the drive
     setView(item.shared ? "shared" : item.trash ? "trash" : "my-drive");
     setCurrentPath(folderPathOf(item));
+    setSearchQuery("");
+  };
+
+  // Highlight the matching part of a name in search results
+  const highlightName = (name) => {
+    if (!searchQuery || typeof name !== "string") return name;
+    const i = name.toLowerCase().indexOf(searchQuery.toLowerCase());
+    if (i === -1) return name;
+    return (
+      <>
+        {name.slice(0, i)}
+        <mark style={{ backgroundColor: "#FDD663", color: "#1F1F1F", borderRadius: "2px", padding: 0 }}>
+          {name.slice(i, i + searchQuery.length)}
+        </mark>
+        {name.slice(i + searchQuery.length)}
+      </>
+    );
   };
 
   // Account chip: social users see name/email, wallet users see the address
@@ -1033,6 +1050,47 @@ export default function AppLayout({
             </div>
           </div>
 
+          {/* SEARCH FILTER CHIPS — type buckets + current-folder scope */}
+          {searchQuery && (
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", padding: "0 24px 14px" }}>
+              {[
+                [null, "All"], ["folder", "Folders"], ["pdf", "PDFs"], ["image", "Images"],
+                ["doc", "Docs"], ["video", "Videos"], ["audio", "Audio"], ["code", "Code"], ["archive", "Archives"],
+              ].map(([key, label]) => {
+                const active = searchType === key;
+                return (
+                  <button
+                    key={label}
+                    onClick={() => setSearchType(key)}
+                    style={{
+                      border: `1px solid ${active ? "transparent" : theme.border}`, cursor: "pointer",
+                      padding: "6px 14px", borderRadius: "999px", fontSize: "13px",
+                      backgroundColor: active ? theme.navActive : "transparent",
+                      color: active ? theme.navActiveText : theme.text, fontWeight: active ? 600 : 400,
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+              {currentPath !== "/" && (
+                <button
+                  onClick={() => setSearchScope(searchScope === "folder" ? "all" : "folder")}
+                  title="Only results inside the folder you were browsing"
+                  style={{
+                    border: `1px dashed ${searchScope === "folder" ? "transparent" : theme.border}`, cursor: "pointer",
+                    padding: "6px 14px", borderRadius: "999px", fontSize: "13px", marginLeft: "8px",
+                    backgroundColor: searchScope === "folder" ? theme.navActive : "transparent",
+                    color: searchScope === "folder" ? theme.navActiveText : theme.subText,
+                    fontWeight: searchScope === "folder" ? 600 : 400,
+                  }}
+                >
+                  In “{crumbs[crumbs.length - 1]}”
+                </button>
+              )}
+            </div>
+          )}
+
           {/* CONTENT */}
           <div ref={contentRef} onMouseDown={onBandStart} onContextMenu={onBackgroundContextMenu} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
             {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
@@ -1074,7 +1132,7 @@ export default function AppLayout({
                             ) : (
                               <Folder size={20} fill={theme.subText} color={theme.subText} style={{ flexShrink: 0 }} />
                             )}
-                            <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                            <span style={{ flex: 1, fontSize: "14px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{highlightName(item.name)}</span>
                             {starredFolders?.has(folderPathOf(item)) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
                             <MoreButton item={item} visible={hoveredKey === key} />
                           </div>
@@ -1112,7 +1170,7 @@ export default function AppLayout({
                             <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 6px 10px 14px" }}>
                               <SelectBox cid={item.cid} visible={hoveredKey === key || someSelected} />
                               <Icon size={17} color={color} style={{ flexShrink: 0 }} />
-                              <span style={{ flex: 1, fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.filename}>{item.filename}</span>
+                              <span style={{ flex: 1, fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.filename}>{highlightName(item.filename)}</span>
                               {starred?.has(item.cid) && <Star size={13} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
                               <MoreButton item={item} visible={hoveredKey === key} />
                             </div>
@@ -1210,7 +1268,7 @@ export default function AppLayout({
                           ) : (
                             <Icon size={19} color={color} fill={item.type === "folder" ? color : "none"} />
                           )}
-                          {item.name}
+                          {highlightName(item.name)}
                           {((item.type === "file" && starred?.has(item.cid)) ||
                             (item.type === "folder" && starredFolders?.has(folderPathOf(item)))) &&
                             <Star size={13} fill="#F29900" color="#F29900" />}
