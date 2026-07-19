@@ -692,6 +692,58 @@ function App() {
     dropFolderEntries();
   };
 
+  // Multi-select drag: move files plus whole folders to destFolder in one
+  // moveFiles tx. Folders that are the destination or one of its ancestors
+  // are skipped (moving them would nest a folder inside itself); files
+  // already sitting in destFolder stay put.
+  const handleBulkMove = async (items, folderPaths, destFolder) => {
+    const okFolders = folderPaths.filter((p) => p !== destFolder && !destFolder.startsWith(p + "/"));
+    const destBaseOf = (p) => {
+      const name = p.slice(p.lastIndexOf("/") + 1);
+      return destFolder === "/" ? `/${name}` : `${destFolder}/${name}`;
+    };
+
+    const looseFiles = items.filter((f) => f.is_owner && (f.folder_path || "/") !== destFolder);
+    const seen = new Set(looseFiles.map((f) => f.cid));
+    const moves = looseFiles.map((f) => ({
+      file: f,
+      to: destFolder === "/" ? `/${f.filename}` : `${destFolder}/${f.filename}`,
+    }));
+    for (const p of okFolders) {
+      const base = destBaseOf(p);
+      for (const f of files) {
+        if (!f.is_owner || isTrashed(f) || seen.has(f.cid)) continue;
+        if (!fullPathOf(f).startsWith(p + "/")) continue;
+        seen.add(f.cid);
+        moves.push({ file: f, to: base + fullPathOf(f).slice(p.length) });
+      }
+    }
+
+    const rewriteLocal = () => {
+      if (!okFolders.length) return;
+      setEmptyFolders((prev) => {
+        const next = new Set();
+        for (const p0 of prev) {
+          const moved = okFolders.find((fp) => p0 === fp || p0.startsWith(fp + "/"));
+          if (moved) next.add(destBaseOf(moved) + p0.slice(moved.length));
+          else next.add(p0);
+        }
+        return persistEmptyFolders(next);
+      });
+      okFolders.forEach((p) => remapStarredFolders(p, destBaseOf(p)));
+    };
+
+    if (moves.length === 0) {
+      // Only empty folders moved — local bookkeeping, nothing on-chain
+      rewriteLocal();
+      if (okFolders.length) toast.success("Moved");
+      return;
+    }
+    const pathByCid = new Map(moves.map((m) => [m.file.cid, m.to]));
+    await runBatchMove(moves.map((m) => m.file), "Moving", (f) => pathByCid.get(f.cid));
+    rewriteLocal();
+  };
+
   // Files in the trash under a logical folder path (path without /.trash)
   const trashedFilesUnder = (folderPath) =>
     files.filter((f) => f.is_owner && isTrashed(f) && fullPathOf(f).startsWith(TRASH_PREFIX + folderPath + "/"));
@@ -1101,6 +1153,7 @@ function App() {
       handleCreateFolder={handleCreateFolder}
       handleRenameFolder={handleRenameFolder}
       handleMoveFolder={handleMoveFolder}
+      handleBulkMove={handleBulkMove}
       handleTrashFolder={handleTrashFolder}
       handleMove={handleMove}
       handleDelete={handleDelete}

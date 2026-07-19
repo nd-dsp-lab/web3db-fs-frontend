@@ -112,7 +112,7 @@ export default function AppLayout({
   folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
-  handleBulkTrash, handleBulkRestore, handleBulkDelete,
+  handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null); // { type: "file", cid, name, fromPath } | { type: "folder", path }
@@ -352,11 +352,15 @@ export default function AppLayout({
   // --- DRAG AND DROP LOGIC ---
   // Internal drags move files/folders between folders; drop targets are
   // folder tiles/rows, breadcrumb segments, and the My Drive nav item.
+  // Dragging an item that's part of the multi-selection drags the whole
+  // selection (Drive behavior); an unselected item drags alone.
   const onFileDragStart = (file) => {
+    if (selectedCount > 1 && selected.has(file.cid)) { setDraggedItem({ type: "selection" }); return; }
     setDraggedItem({ type: "file", cid: file.cid, name: file.name, fromPath: currentPath });
   };
 
   const onFolderDragStart = (item) => {
+    if (selectedCount > 1 && selected.has(folderKeyOf(item))) { setDraggedItem({ type: "selection" }); return; }
     setDraggedItem({ type: "folder", path: folderPathOf(item) });
   };
 
@@ -366,10 +370,17 @@ export default function AppLayout({
   const onInternalDropTo = async (e, destFolderPath) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!draggedItem) return;
+    if (!draggedItem || view === "trash") return; // no drag-moves inside Trash
     const item = draggedItem;
     setDraggedItem(null);
-    if (item.type === "file") {
+    if (item.type === "selection") {
+      await handleBulkMove(
+        selectedFiles.filter((f) => f.is_owner),
+        selectedFolders.filter((i) => !i.shared && !i.trash).map(folderPathOf),
+        destFolderPath
+      );
+      clearSelection();
+    } else if (item.type === "file") {
       if (item.fromPath === destFolderPath) return; // already there — skip the pointless signature
       const destination = destFolderPath === "/" ? `/${item.name}` : `${destFolderPath}/${item.name}`;
       await handleMove(item.cid, destination);
