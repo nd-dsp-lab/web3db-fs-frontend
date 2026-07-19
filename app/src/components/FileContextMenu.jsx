@@ -1,6 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info } from "lucide-react";
 
+// Shortcut hints shown in menus — the keys act on the current selection
+const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
+export const SHORTCUTS = {
+  rename: IS_MAC ? "⌥⌘E" : "Ctrl+Alt+E",
+  star: IS_MAC ? "⌥⌘S" : "Ctrl+Alt+S",
+  trash: "Delete",
+};
+
 // Recursively builds a flat list of { label, path } for all folders in the tree
 export function collectFolders(node, parentPath = "") {
   const results = [];
@@ -83,7 +91,7 @@ export default function FileContextMenu({
   };
   const dividerStyle = { borderTop: "1px solid #eee", margin: "4px 0" };
 
-  const Item = ({ icon, label, onClick, color = "#222", disabled = false }) => (
+  const Item = ({ icon, label, onClick, color = "#222", disabled = false, shortcut }) => (
     <div
       onMouseDown={e => { e.stopPropagation(); if (!disabled) onClick(); }}
       style={{
@@ -96,6 +104,7 @@ export default function FileContextMenu({
     >
       <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>
       {label}
+      {shortcut && <span style={{ marginLeft: "auto", paddingLeft: "18px", color: "#999", fontSize: "0.85em" }}>{shortcut}</span>}
     </div>
   );
 
@@ -136,6 +145,7 @@ export default function FileContextMenu({
         <Item
           icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
           label={isStarred ? "Remove from starred" : "Add to starred"}
+          shortcut={SHORTCUTS.star}
           onClick={() => { onToggleStar(file.cid); onClose(); }}
         />
       )}
@@ -143,7 +153,7 @@ export default function FileContextMenu({
       {/* RENAME — owner only; a move within the same folder */}
       {is_owner && (
         <Item
-          icon={<Pencil size={15} />} label="Rename"
+          icon={<Pencil size={15} />} label="Rename" shortcut={SHORTCUTS.rename}
           onClick={async () => {
             onClose();
             const newName = window.prompt("New name", file.filename);
@@ -194,6 +204,7 @@ export default function FileContextMenu({
               <Item
                 icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
                 label={isStarred ? "Remove from starred" : "Add to starred"}
+                shortcut={SHORTCUTS.star}
                 onClick={() => { onToggleStar(file.cid); onClose(); }}
               />
               <div style={dividerStyle} />
@@ -249,7 +260,7 @@ export default function FileContextMenu({
       {/* MOVE TO TRASH — owner only; the wallet signature acts as the confirm */}
       {is_owner && (
         <Item
-          icon={<Trash2 size={15} />} label="Move to trash" color="#d9534f"
+          icon={<Trash2 size={15} />} label="Move to trash" color="#d9534f" shortcut={SHORTCUTS.trash}
           onClick={async () => { onClose(); await onTrash(file); }}
         />
       )}

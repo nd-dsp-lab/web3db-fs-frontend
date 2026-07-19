@@ -5,7 +5,7 @@ import {
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
   Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil, UserPlus, FolderInput,
 } from "lucide-react";
-import FileContextMenu, { collectFolders } from "./FileContextMenu";
+import FileContextMenu, { collectFolders, SHORTCUTS } from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
@@ -517,6 +517,66 @@ export default function AppLayout({
   // Multi-select share: owned files + owned folders expanded to their cids,
   // presented through the ShareModal's folder mode as one grantFiles tx.
   const ownedSelection = selectedFiles.every((f) => f.is_owner) && selectedFolders.every((i) => !i.shared);
+  // --- KEYBOARD SHORTCUTS (Drive-style) ---
+  // ⌥⌘E / F2 rename (single selection), Delete/Backspace trash (delete
+  // forever in Trash), ⌥⌘S toggle star — all act on the current selection.
+  // Handler lives in a ref so the listener registers once but reads fresh state.
+  const shortcutRef = useRef();
+  shortcutRef.current = (e) => {
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (previewFile || shareFile || detailsFile) return;
+    const combo = (e.metaKey || e.ctrlKey) && e.altKey;
+
+    if (e.key === "F2" || (combo && e.code === "KeyE")) {
+      if (selectedCount !== 1 || view === "trash") return;
+      e.preventDefault();
+      if (selectedFiles.length === 1) {
+        const file = selectedFiles[0];
+        if (!file.is_owner) return;
+        const newName = window.prompt("New name", file.filename)?.trim();
+        clearSelection();
+        if (!newName || newName === file.filename) return;
+        const folder = file.folder_path || currentPath || "/";
+        const newPath = folder === "/" ? `/${newName}` : `${folder.replace(/\/+$/, "")}/${newName}`;
+        handleMove(file.cid, newPath);
+      } else {
+        const item = selectedFolders[0];
+        if (item.shared || item.trash) return;
+        clearSelection();
+        promptRenameFolder(item.name, folderPathOf(item));
+      }
+      return;
+    }
+
+    if (e.key === "Delete" || e.key === "Backspace") {
+      if (selectedCount === 0) return;
+      e.preventDefault();
+      if (view === "trash") {
+        handleBulkDelete(selectedFiles, selectedFolders.map(folderPathOf));
+      } else {
+        handleBulkTrash(
+          selectedFiles.filter((f) => f.is_owner),
+          selectedFolders.filter((i) => !i.shared).map(folderPathOf)
+        );
+      }
+      clearSelection();
+      return;
+    }
+
+    if (combo && e.code === "KeyS") {
+      if (selectedCount === 0 || view === "trash") return;
+      e.preventDefault();
+      toggleStarMany(selectedFiles.map((f) => f.cid), selectedFolders.map(folderPathOf));
+      clearSelection();
+    }
+  };
+  useEffect(() => {
+    const h = (e) => shortcutRef.current?.(e);
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, []);
+
   const openShareForSelection = () => {
     const cids = [
       ...selectedFiles.filter((f) => f.is_owner).map((f) => f.cid),
@@ -1262,6 +1322,7 @@ export default function AppLayout({
               </div>
             );
             const starLabel = starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred";
+            const Hint = ({ text }) => <span style={{ color: theme.subText, fontSize: "12px" }}>{text}</span>;
             const doStar = () => { setFolderMenu(null); toggleStarFolder(folderMenu.path); };
 
             if (folderMenu.trash) {
@@ -1294,7 +1355,7 @@ export default function AppLayout({
               <>
                 <Row Icon={Download} label="Download" onClick={() => { setFolderMenu(null); downloadFolder(folderMenu.name, folderMenu.path); }} />
                 {/* Shared folders have no move rights — star stays top-level */}
-                {folderMenu.shared && <Row Icon={Star} label={starLabel} onClick={doStar} />}
+                {folderMenu.shared && <Row Icon={Star} label={starLabel} onClick={doStar} right={<Hint text={SHORTCUTS.star} />} />}
                 <Row
                   Icon={Info} label="Folder details"
                   onClick={() => { setFolderMenu(null); openDetails({ type: "folder", name: folderMenu.name, path: folderMenu.path, shared: folderMenu.shared }); }}
@@ -1313,7 +1374,7 @@ export default function AppLayout({
                         });
                       }}
                     />
-                    <Row Icon={Pencil} label="Rename" onClick={() => { setFolderMenu(null); promptRenameFolder(folderMenu.name, folderMenu.path); }} />
+                    <Row Icon={Pencil} label="Rename" onClick={() => { setFolderMenu(null); promptRenameFolder(folderMenu.name, folderMenu.path); }} right={<Hint text={SHORTCUTS.rename} />} />
                     {/* Organize: star + move grouped like Drive */}
                     <div
                       style={{ position: "relative" }}
@@ -1328,7 +1389,7 @@ export default function AppLayout({
                           backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
                           boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0", zIndex: 10000,
                         }}>
-                          <Row Icon={Star} label={starLabel} onClick={doStar} />
+                          <Row Icon={Star} label={starLabel} onClick={doStar} right={<Hint text={SHORTCUTS.star} />} />
                           <div style={{ borderTop: `1px solid ${theme.border}`, margin: "4px 0" }} />
                           <div style={{ padding: "6px 18px 4px", fontSize: "12px", color: theme.subText }}>Move to</div>
                           {dests.length === 0 && (
@@ -1340,7 +1401,7 @@ export default function AppLayout({
                         </div>
                       )}
                     </div>
-                    <Row Icon={Trash2} label="Move to trash" color="#d9534f" onClick={() => { setFolderMenu(null); handleTrashFolder(folderMenu.path); }} />
+                    <Row Icon={Trash2} label="Move to trash" color="#d9534f" onClick={() => { setFolderMenu(null); handleTrashFolder(folderMenu.path); }} right={<Hint text={SHORTCUTS.trash} />} />
                   </>
                 )}
               </>
