@@ -9,6 +9,7 @@ import FileContextMenu, { collectFolders, SHORTCUTS } from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
+import RenameModal from "./RenameModal";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
 // out in the tile's background color (lucide has no combined icon)
@@ -128,6 +129,7 @@ export default function AppLayout({
   const [selected, setSelected] = useState(new Set()); // file CIDs + "folder:{path}" keys
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsFile, setDetailsFile] = useState(null);
+  const [renameTarget, setRenameTarget] = useState(null); // { type: "file", file } | { type: "folder", name, path }
 
   // Selection is scoped to what's on screen: clear on any navigation, and on Escape
   useEffect(() => { setSelected(new Set()); }, [view, currentPath, searchQuery]);
@@ -453,12 +455,8 @@ export default function AppLayout({
     }
   };
 
-  const promptRenameFolder = (folderName, folderPath) => {
-    const newName = window.prompt("New folder name", folderName)?.trim();
-    if (!newName || newName === folderName) return;
-    if (newName.includes("/")) { toast.error("Folder name can't contain /"); return; }
-    handleRenameFolder(folderPath, newName);
-  };
+  const promptRenameFolder = (folderName, folderPath) =>
+    setRenameTarget({ type: "folder", name: folderName, path: folderPath });
 
   const openMenuForFolder = (e, item) => {
     e.preventDefault();
@@ -525,7 +523,7 @@ export default function AppLayout({
   shortcutRef.current = (e) => {
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    if (previewFile || shareFile || detailsFile) return;
+    if (previewFile || shareFile || detailsFile || renameTarget) return;
     const combo = (e.metaKey || e.ctrlKey) && e.altKey;
 
     if (e.key === "F2" || (combo && e.code === "KeyE")) {
@@ -534,12 +532,8 @@ export default function AppLayout({
       if (selectedFiles.length === 1) {
         const file = selectedFiles[0];
         if (!file.is_owner) return;
-        const newName = window.prompt("New name", file.filename)?.trim();
         clearSelection();
-        if (!newName || newName === file.filename) return;
-        const folder = file.folder_path || currentPath || "/";
-        const newPath = folder === "/" ? `/${newName}` : `${folder.replace(/\/+$/, "")}/${newName}`;
-        handleMove(file.cid, newPath);
+        setRenameTarget({ type: "file", file });
       } else {
         const item = selectedFolders[0];
         if (item.shared || item.trash) return;
@@ -1517,6 +1511,7 @@ export default function AppLayout({
           onDownload={downloadFile}
           onDetails={openDetails}
           onShareOpen={(file) => setShareFile(file)}
+          onRenameOpen={(file) => setRenameTarget({ type: "file", file })}
           onDelete={handleDelete}
           onMove={handleMove}
           onTrash={handleTrash}
@@ -1524,6 +1519,26 @@ export default function AppLayout({
           inTrash={(contextMenu.file.folder_path || "/").startsWith("/.trash")}
           isStarred={starred?.has(contextMenu.file.cid)}
           onToggleStar={toggleStar}
+        />
+      )}
+
+      {renameTarget && (
+        <RenameModal
+          initialName={renameTarget.type === "file" ? renameTarget.file.filename : renameTarget.name}
+          isFolder={renameTarget.type === "folder"}
+          darkMode={darkMode}
+          siblings={(displayItems || []).map((i) => i.name).filter((n) => n && n !== (renameTarget.type === "file" ? renameTarget.file.filename : renameTarget.name))}
+          onClose={() => setRenameTarget(null)}
+          onSubmit={(newName) => {
+            if (renameTarget.type === "folder") {
+              handleRenameFolder(renameTarget.path, newName);
+            } else {
+              const f = renameTarget.file;
+              const folder = f.folder_path || currentPath || "/";
+              const newPath = folder === "/" ? `/${newName}` : `${folder.replace(/\/+$/, "")}/${newName}`;
+              handleMove(f.cid, newPath);
+            }
+          }}
         />
       )}
     </div>

@@ -38,6 +38,7 @@ export default function FileContextMenu({
   onClose,
   onDownload,
   onShareOpen,
+  onRenameOpen,
   onDelete,
   onMove,
   onTrash,
@@ -154,14 +155,7 @@ export default function FileContextMenu({
       {is_owner && (
         <Item
           icon={<Pencil size={15} />} label="Rename" shortcut={SHORTCUTS.rename}
-          onClick={async () => {
-            onClose();
-            const newName = window.prompt("New name", file.filename);
-            if (!newName || newName === file.filename) return;
-            const folder = file.folder_path || currentPath || "/";
-            const newPath = folder === "/" ? `/${newName}` : `${folder.replace(/\/+$/, "")}/${newName}`;
-            await onMove(file.cid, newPath);
-          }}
+          onClick={() => { onClose(); onRenameOpen(file); }}
         />
       )}
 
