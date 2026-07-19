@@ -100,7 +100,7 @@ export function formatBytes(bytes) {
   return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`;
 }
 
-const STORAGE_QUOTA = 1024 ** 3; // 1 GB nominal quota for the usage bar
+const STORAGE_QUOTA = 1024 ** 3; // fallback for the usage bar until /storage-stats responds
 
 const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred", trash: "Trash" };
 
@@ -112,7 +112,7 @@ export default function AppLayout({
   handleRestoreFolder, handleDeleteFolderForever,
   folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope, darkMode, toggleTheme, user,
-  starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, toast,
+  starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, storageQuota, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
@@ -817,11 +817,11 @@ export default function AppLayout({
           <div style={{ height: "4px", borderRadius: "999px", backgroundColor: theme.tile, overflow: "hidden", marginBottom: "8px" }}>
             <div style={{
               height: "100%", borderRadius: "999px", backgroundColor: "#1A73E8",
-              width: `${Math.min(100, (storageUsed / STORAGE_QUOTA) * 100)}%`, minWidth: storageUsed > 0 ? "2px" : 0,
+              width: `${Math.min(100, (storageUsed / (storageQuota || STORAGE_QUOTA)) * 100)}%`, minWidth: storageUsed > 0 ? "2px" : 0,
             }} />
           </div>
           <div style={{ fontSize: "12px", color: theme.subText }}>
-            {formatBytes(storageUsed)} of {formatBytes(STORAGE_QUOTA)} used
+            {formatBytes(storageUsed)} of {formatBytes(storageQuota || STORAGE_QUOTA)} used
           </div>
         </div>
       </aside>

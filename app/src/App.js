@@ -943,6 +943,16 @@ function App() {
   // Storage usage: only files the user owns count against them
   const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
 
+  // Real capacity for the usage bar: what the IPFS node's disk can still take
+  const [diskFree, setDiskFree] = useState(null);
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/storage-stats`, { headers: { "ngrok-skip-browser-warning": "true" } })
+      .then((r) => r.json())
+      .then((d) => { if (d.disk_free != null) setDiskFree(d.disk_free); })
+      .catch(() => {});
+  }, [API_BASE_URL]);
+  const storageQuota = diskFree != null ? storageUsed + diskFree : null;
+
   // --- UPLOAD LOGIC ---
   // XHR instead of fetch: fetch can't report request-body upload progress
   const uploadWithProgress = (url, formData, onProgress) =>
@@ -1272,6 +1282,7 @@ function App() {
       toggleStar={toggleStar}
       toggleStarMany={toggleStarMany}
       storageUsed={storageUsed}
+      storageQuota={storageQuota}
       toast={toast}
       handleBulkTrash={handleBulkTrash}
       handleBulkRestore={handleBulkRestore}
