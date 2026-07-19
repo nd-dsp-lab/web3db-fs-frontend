@@ -40,7 +40,7 @@ export default function FileContextMenu({
   onToggleStar,
 }) {
   const menuRef = useRef(null);
-  const [showMoveSubmenu, setShowMoveSubmenu] = useState(false);
+  const [showOrganize, setShowOrganize] = useState(false);
 
   // Close on outside click or Escape
   useEffect(() => {
@@ -131,12 +131,14 @@ export default function FileContextMenu({
       {/* FILE DETAILS */}
       <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); onDetails(file); }} />
 
-      {/* STAR — anyone with the file in their list */}
-      <Item
-        icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
-        label={isStarred ? "Remove from starred" : "Add to starred"}
-        onClick={() => { onToggleStar(file.cid); onClose(); }}
-      />
+      {/* STAR — non-owners keep it top-level (no Organize menu without move rights) */}
+      {!is_owner && (
+        <Item
+          icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
+          label={isStarred ? "Remove from starred" : "Add to starred"}
+          onClick={() => { onToggleStar(file.cid); onClose(); }}
+        />
+      )}
 
       {/* RENAME — owner only; a move within the same folder */}
       {is_owner && (
@@ -163,39 +165,40 @@ export default function FileContextMenu({
         />
       )}
 
-      {/* MOVE — owner only, with folder submenu */}
+      {/* ORGANIZE — owner only: star + move destinations, grouped like Drive */}
       {is_owner && (
         <div
           style={{ position: "relative" }}
-          onMouseEnter={() => setShowMoveSubmenu(true)}
-          onMouseLeave={() => setShowMoveSubmenu(false)}
+          onMouseEnter={() => setShowOrganize(true)}
+          onMouseLeave={() => setShowOrganize(false)}
         >
           <div
-            style={{
-              ...itemBase,
-              color: folders.length === 0 ? "#bbb" : "#222",
-              cursor: folders.length === 0 ? "not-allowed" : "pointer",
-              justifyContent: "space-between",
-            }}
-            onMouseEnter={e => { if (folders.length > 0) e.currentTarget.style.background = "#f5f5f5"; }}
+            style={{ ...itemBase, justifyContent: "space-between" }}
+            onMouseEnter={e => { e.currentTarget.style.background = "#f5f5f5"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
           >
             <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}><FolderInput size={15} /></span>
-              Move to
+              Organize
             </span>
             <ChevronRight size={14} color="#999" />
           </div>
 
-          {/* Folder submenu */}
-          {showMoveSubmenu && folders.length > 0 && (
+          {showOrganize && (
             <div style={{
               position: "absolute", top: 0, left: "100%",
               background: "#fff", border: "1px solid #ddd", borderRadius: "6px",
               boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: "200px",
               maxHeight: "260px", overflowY: "auto", padding: "4px 0", zIndex: 10000,
             }}>
-              {/* Root option */}
+              <Item
+                icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
+                label={isStarred ? "Remove from starred" : "Add to starred"}
+                onClick={() => { onToggleStar(file.cid); onClose(); }}
+              />
+              <div style={dividerStyle} />
+              <div style={{ padding: "4px 16px", fontSize: "0.8em", color: "#999" }}>Move to</div>
+
               {currentPath !== "/" && (
                 <div
                   onMouseDown={async e => {
@@ -212,6 +215,10 @@ export default function FileContextMenu({
                 >
                   <Folder size={14} color="#5f6368" /> /
                 </div>
+              )}
+
+              {folders.length === 0 && currentPath === "/" && (
+                <div style={{ ...itemBase, color: "#bbb", cursor: "default" }}>No other folders</div>
               )}
 
               {folders.map(({ label, path }) => (

@@ -119,7 +119,7 @@ export default function AppLayout({
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
   const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
-  const [folderMoveMenu, setFolderMoveMenu] = useState(null); // { x, y, name, path } — destination picker
+  const [folderOrganizeOpen, setFolderOrganizeOpen] = useState(false); // Organize hover submenu in folder menu
   const [selMenu, setSelMenu] = useState(null); // { x, y } — right-click menu over a multi-selection
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
@@ -243,8 +243,8 @@ export default function AppLayout({
   };
 
   useEffect(() => {
-    if (!bgMenu && !folderMenu && !selMenu && !folderMoveMenu) return;
-    const close = () => { setBgMenu(null); setFolderMenu(null); setSelMenu(null); setFolderMoveMenu(null); };
+    if (!bgMenu && !folderMenu && !selMenu) return;
+    const close = () => { setBgMenu(null); setFolderMenu(null); setSelMenu(null); setFolderOrganizeOpen(false); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
@@ -252,7 +252,7 @@ export default function AppLayout({
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", onKey);
     };
-  }, [bgMenu, folderMenu, selMenu, folderMoveMenu]);
+  }, [bgMenu, folderMenu, selMenu]);
 
   // --- RUBBER-BAND SELECTION ---
   // Drag from empty content-area background to draw a selection box; file
@@ -431,6 +431,7 @@ export default function AppLayout({
     e.stopPropagation();
     // Right-click inside a multi-selection acts on the whole selection
     if (selectedCount > 1 && selected.has(folderKeyOf(item))) { setSelMenu({ x: e.clientX, y: e.clientY }); return; }
+    setFolderOrganizeOpen(false);
     setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item), shared: !!item.shared, trash: !!item.trash });
   };
 
@@ -1197,102 +1198,111 @@ export default function AppLayout({
             zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
           }}
         >
-          {(folderMenu.trash ? [
-            { Icon: RotateCcw, label: "Restore", action: () => handleRestoreFolder(folderMenu.path) },
-            { Icon: Trash2, label: "Delete forever", color: "#d9534f", action: () => handleDeleteFolderForever(folderMenu.path) },
-          ] : [
-            { Icon: Download, label: "Download", action: () => downloadFolder(folderMenu.name, folderMenu.path) },
-            {
-              Icon: Star,
-              label: starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred",
-              action: () => toggleStarFolder(folderMenu.path),
-            },
-            {
-              Icon: Info,
-              label: "Folder details",
-              action: () => openDetails({ type: "folder", name: folderMenu.name, path: folderMenu.path, shared: folderMenu.shared }),
-            },
-            // Owner-only actions hidden on folders shared to this user
-            ...(folderMenu.shared ? [] : [
-              {
-                Icon: UserPlus,
-                label: "Share",
-                action: () => setShareFile({
-                  folder: true,
-                  filename: folderMenu.name,
-                  path: folderMenu.path,
-                  cids: folderCidsOf ? folderCidsOf(folderMenu.path) : [],
-                }),
-              },
-              { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name, folderMenu.path) },
-              {
-                Icon: FolderInput,
-                label: "Move to",
-                action: () => setFolderMoveMenu({ x: folderMenu.x, y: folderMenu.y, name: folderMenu.name, path: folderMenu.path }),
-              },
-              { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => handleTrashFolder(folderMenu.path) },
-            ]),
-          ]).map(({ Icon, label, color, action }) => (
-            <div
-              key={label}
-              onClick={() => { setFolderMenu(null); action(); }}
-              style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", color: color || theme.text }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-            >
-              <Icon size={16} color={color || theme.subText} /> {label}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Folder move destination picker: all folders except the folder
-          itself, its descendants, and its current parent — plus root */}
-      {folderMoveMenu && (() => {
-        const parent = folderMoveMenu.path.slice(0, folderMoveMenu.path.lastIndexOf("/")) || "/";
-        const dests = [
-          ...(parent !== "/" ? [{ label: "/", path: "/" }] : []),
-          ...collectFolders(fileTree).filter(({ path }) =>
-            path !== folderMoveMenu.path &&
-            !path.startsWith(folderMoveMenu.path + "/") &&
-            path !== parent
-          ),
-        ];
-        const doMove = (destPath) => {
-          setFolderMoveMenu(null);
-          if (!window.confirm(`Move "${folderMoveMenu.name}" to ${destPath}?`)) return;
-          handleMoveFolder(folderMoveMenu.path, destPath);
-        };
-        return (
-          <div
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              position: "fixed", top: folderMoveMenu.y, left: folderMoveMenu.x, minWidth: "200px",
-              maxHeight: "280px", overflowY: "auto",
-              backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
-              zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
-            }}
-          >
-            <div style={{ padding: "8px 18px 6px", fontSize: "12px", color: theme.subText }}>
-              Move "{folderMoveMenu.name}" to…
-            </div>
-            {dests.length === 0 && (
-              <div style={{ padding: "10px 18px", fontSize: "13px", color: theme.subText }}>No other folders</div>
-            )}
-            {dests.map(({ label, path }) => (
+          {(() => {
+            const Row = ({ Icon, label, color, onClick, right }) => (
               <div
-                key={path}
-                onClick={() => doMove(path)}
-                style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", color: theme.text }}
+                onClick={onClick}
+                style={{
+                  padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center",
+                  justifyContent: right ? "space-between" : "flex-start", gap: "12px", fontSize: "14px",
+                  color: color || theme.text,
+                }}
                 onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
               >
-                <Folder size={16} color={theme.subText} /> {label}
+                <span style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <Icon size={16} color={color || theme.subText} /> {label}
+                </span>
+                {right}
               </div>
-            ))}
-          </div>
-        );
-      })()}
+            );
+            const starLabel = starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred";
+            const doStar = () => { setFolderMenu(null); toggleStarFolder(folderMenu.path); };
+
+            if (folderMenu.trash) {
+              return (
+                <>
+                  <Row Icon={RotateCcw} label="Restore" onClick={() => { setFolderMenu(null); handleRestoreFolder(folderMenu.path); }} />
+                  <Row Icon={Trash2} label="Delete forever" color="#d9534f" onClick={() => { setFolderMenu(null); handleDeleteFolderForever(folderMenu.path); }} />
+                </>
+              );
+            }
+
+            // Move destinations: all folders except the folder itself, its
+            // descendants, and its current parent — plus root
+            const parent = folderMenu.path.slice(0, folderMenu.path.lastIndexOf("/")) || "/";
+            const dests = [
+              ...(parent !== "/" ? [{ label: "/", path: "/" }] : []),
+              ...collectFolders(fileTree).filter(({ path }) =>
+                path !== folderMenu.path &&
+                !path.startsWith(folderMenu.path + "/") &&
+                path !== parent
+              ),
+            ];
+            const doMove = (destPath) => {
+              setFolderMenu(null);
+              if (!window.confirm(`Move "${folderMenu.name}" to ${destPath}?`)) return;
+              handleMoveFolder(folderMenu.path, destPath);
+            };
+
+            return (
+              <>
+                <Row Icon={Download} label="Download" onClick={() => { setFolderMenu(null); downloadFolder(folderMenu.name, folderMenu.path); }} />
+                {/* Shared folders have no move rights — star stays top-level */}
+                {folderMenu.shared && <Row Icon={Star} label={starLabel} onClick={doStar} />}
+                <Row
+                  Icon={Info} label="Folder details"
+                  onClick={() => { setFolderMenu(null); openDetails({ type: "folder", name: folderMenu.name, path: folderMenu.path, shared: folderMenu.shared }); }}
+                />
+                {!folderMenu.shared && (
+                  <>
+                    <Row
+                      Icon={UserPlus} label="Share"
+                      onClick={() => {
+                        setFolderMenu(null);
+                        setShareFile({
+                          folder: true,
+                          filename: folderMenu.name,
+                          path: folderMenu.path,
+                          cids: folderCidsOf ? folderCidsOf(folderMenu.path) : [],
+                        });
+                      }}
+                    />
+                    <Row Icon={Pencil} label="Rename" onClick={() => { setFolderMenu(null); promptRenameFolder(folderMenu.name, folderMenu.path); }} />
+                    {/* Organize: star + move grouped like Drive */}
+                    <div
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => setFolderOrganizeOpen(true)}
+                      onMouseLeave={() => setFolderOrganizeOpen(false)}
+                    >
+                      <Row Icon={FolderInput} label="Organize" onClick={() => {}} right={<ChevronRight size={14} color={theme.subText} />} />
+                      {folderOrganizeOpen && (
+                        <div style={{
+                          position: "absolute", left: "100%", top: 0, minWidth: "200px",
+                          maxHeight: "260px", overflowY: "auto",
+                          backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0", zIndex: 10000,
+                        }}>
+                          <Row Icon={Star} label={starLabel} onClick={doStar} />
+                          <div style={{ borderTop: `1px solid ${theme.border}`, margin: "4px 0" }} />
+                          <div style={{ padding: "6px 18px 4px", fontSize: "12px", color: theme.subText }}>Move to</div>
+                          {dests.length === 0 && (
+                            <div style={{ padding: "8px 18px", fontSize: "13px", color: theme.subText }}>No other folders</div>
+                          )}
+                          {dests.map(({ label, path }) => (
+                            <Row key={path} Icon={Folder} label={label} onClick={() => doMove(path)} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Row Icon={Trash2} label="Move to trash" color="#d9534f" onClick={() => { setFolderMenu(null); handleTrashFolder(folderMenu.path); }} />
+                  </>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
 
       {selMenu && (
         <div
