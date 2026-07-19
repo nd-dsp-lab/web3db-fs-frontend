@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, Copy, ExternalLink, Star, Folder } from "lucide-react";
+import { X, Copy, ExternalLink, Star, Folder, Layers } from "lucide-react";
 import { fileVisual, formatBytes, Thumbnail, hasThumbnailFor } from "./AppLayout";
 
 const short = (addr = "") => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "—");
@@ -11,11 +11,12 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
   const [sharedUsers, setSharedUsers] = useState(null); // null = loading
 
   const isFolder = file?.type === "folder";
+  const isMulti = file?.type === "multi"; // selection summary — no single subject
   const stats = isFolder && folderStatsOf ? folderStatsOf(file.path) : null;
 
   useEffect(() => {
     setSharedUsers(null);
-    if (!file) return;
+    if (!file || file.type === "multi") return;
     let cancelled = false;
     const done = (d) => { if (!cancelled) setSharedUsers(d.shared_with || []); };
     const fail = () => { if (!cancelled) setSharedUsers([]); };
@@ -53,6 +54,8 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
 
   const { Icon, color } = !file
     ? { Icon: null, color: null }
+    : isMulti
+    ? { Icon: Layers, color: "#5F6368" }
     : isFolder
     ? { Icon: Folder, color: "#5F6368" }
     : fileVisual(file.filename);
@@ -77,7 +80,7 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
         <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
           {file && <Icon size={18} color={color} style={{ flexShrink: 0 }} />}
           <span style={{ fontSize: "15px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {file ? (isFolder ? file.name : file.filename) : "Details"}
+            {file ? (isMulti ? `${file.items} items selected` : isFolder ? file.name : file.filename) : "Details"}
           </span>
           {file && isStarred && <Star size={14} fill="#F29900" color="#F29900" style={{ flexShrink: 0 }} />}
         </div>
@@ -97,6 +100,19 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
         <div style={{ color: theme.subText, fontSize: "13px", textAlign: "center", padding: "40px 0" }}>
           Select a file to see its details.
         </div>
+      ) : isMulti ? (
+        <>
+          <div style={{
+            height: "160px", borderRadius: "12px", backgroundColor: theme.tile, marginBottom: "18px",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Layers size={56} color="#5F6368" strokeWidth={1.2} />
+          </div>
+
+          {row("Selected", `${file.items} item(s)`)}
+          {row("Contents", `${file.files} file(s)` + (file.folders ? ` across ${file.folders} folder(s)` : ""))}
+          {row("Total size", file.size ? formatBytes(file.size) : "—")}
+        </>
       ) : isFolder ? (
         <>
           <div style={{

@@ -610,10 +610,27 @@ export default function AppLayout({
     if (selectedFiles.length) await downloadMany(selectedFiles);
   };
 
-  // While the panel is open it follows the selection; navigation away from
-  // the shown file's view clears it via displayItems refresh below.
+  // While the panel is open it follows the selection — first selected file,
+  // or the selected folder when only folders are selected.
   useEffect(() => {
-    if (detailsOpen && selectedFiles.length > 0) setDetailsFile(selectedFiles[0]);
+    if (!detailsOpen) return;
+    if (selectedCount > 1) {
+      // Drive-style selection summary: counts + combined size (folders
+      // contribute their aggregate stats)
+      const folderStats = selectedFolders.map((i) => folderStatsOf((i.trash ? "/.trash" : "") + folderPathOf(i)));
+      setDetailsFile({
+        type: "multi",
+        items: selectedCount,
+        files: selectedFiles.length + folderStats.reduce((s, st) => s + st.fileCount, 0),
+        folders: selectedFolders.length,
+        size: selectedFiles.reduce((s, f) => s + (f.size || 0), 0) + folderStats.reduce((s, st) => s + st.size, 0),
+      });
+    } else if (selectedFiles.length > 0) {
+      setDetailsFile(selectedFiles[0]);
+    } else if (selectedFolders.length > 0) {
+      const item = selectedFolders[0];
+      setDetailsFile({ type: "folder", name: item.name, path: folderPathOf(item), shared: !!item.shared });
+    }
   }, [detailsOpen, selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openDetails = (file) => { setDetailsFile(file); setDetailsOpen(true); };
