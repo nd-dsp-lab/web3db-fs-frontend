@@ -3,9 +3,9 @@ import {
   Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
   FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
-  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil, UserPlus,
+  Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil, UserPlus, FolderInput,
 } from "lucide-react";
-import FileContextMenu from "./FileContextMenu";
+import FileContextMenu, { collectFolders } from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
@@ -105,7 +105,7 @@ const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: 
 
 export default function AppLayout({
   account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
-  uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
+  uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleMoveFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
   handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, handleShareCids, handleUnshareCids,
   handleRestoreFolder, handleDeleteFolderForever,
@@ -119,6 +119,7 @@ export default function AppLayout({
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
   const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
+  const [folderMoveMenu, setFolderMoveMenu] = useState(null); // { x, y, name, path } — destination picker
   const [selMenu, setSelMenu] = useState(null); // { x, y } — right-click menu over a multi-selection
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
@@ -242,8 +243,8 @@ export default function AppLayout({
   };
 
   useEffect(() => {
-    if (!bgMenu && !folderMenu && !selMenu) return;
-    const close = () => { setBgMenu(null); setFolderMenu(null); setSelMenu(null); };
+    if (!bgMenu && !folderMenu && !selMenu && !folderMoveMenu) return;
+    const close = () => { setBgMenu(null); setFolderMenu(null); setSelMenu(null); setFolderMoveMenu(null); };
     const onKey = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
@@ -251,7 +252,7 @@ export default function AppLayout({
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", onKey);
     };
-  }, [bgMenu, folderMenu, selMenu]);
+  }, [bgMenu, folderMenu, selMenu, folderMoveMenu]);
 
   // --- RUBBER-BAND SELECTION ---
   // Drag from empty content-area background to draw a selection box; file
@@ -1224,6 +1225,11 @@ export default function AppLayout({
                 }),
               },
               { Icon: Pencil, label: "Rename", action: () => promptRenameFolder(folderMenu.name, folderMenu.path) },
+              {
+                Icon: FolderInput,
+                label: "Move to",
+                action: () => setFolderMoveMenu({ x: folderMenu.x, y: folderMenu.y, name: folderMenu.name, path: folderMenu.path }),
+              },
               { Icon: Trash2, label: "Move to trash", color: "#d9534f", action: () => handleTrashFolder(folderMenu.path) },
             ]),
           ]).map(({ Icon, label, color, action }) => (
@@ -1239,6 +1245,54 @@ export default function AppLayout({
           ))}
         </div>
       )}
+
+      {/* Folder move destination picker: all folders except the folder
+          itself, its descendants, and its current parent — plus root */}
+      {folderMoveMenu && (() => {
+        const parent = folderMoveMenu.path.slice(0, folderMoveMenu.path.lastIndexOf("/")) || "/";
+        const dests = [
+          ...(parent !== "/" ? [{ label: "/", path: "/" }] : []),
+          ...collectFolders(fileTree).filter(({ path }) =>
+            path !== folderMoveMenu.path &&
+            !path.startsWith(folderMoveMenu.path + "/") &&
+            path !== parent
+          ),
+        ];
+        const doMove = (destPath) => {
+          setFolderMoveMenu(null);
+          if (!window.confirm(`Move "${folderMoveMenu.name}" to ${destPath}?`)) return;
+          handleMoveFolder(folderMoveMenu.path, destPath);
+        };
+        return (
+          <div
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed", top: folderMoveMenu.y, left: folderMoveMenu.x, minWidth: "200px",
+              maxHeight: "280px", overflowY: "auto",
+              backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
+              zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
+            }}
+          >
+            <div style={{ padding: "8px 18px 6px", fontSize: "12px", color: theme.subText }}>
+              Move "{folderMoveMenu.name}" to…
+            </div>
+            {dests.length === 0 && (
+              <div style={{ padding: "10px 18px", fontSize: "13px", color: theme.subText }}>No other folders</div>
+            )}
+            {dests.map(({ label, path }) => (
+              <div
+                key={path}
+                onClick={() => doMove(path)}
+                style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px", color: theme.text }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+              >
+                <Folder size={16} color={theme.subText} /> {label}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {selMenu && (
         <div

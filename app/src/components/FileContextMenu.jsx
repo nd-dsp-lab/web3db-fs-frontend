@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info } from "lucide-react";
 
 // Recursively builds a flat list of { label, path } for all folders in the tree
-function collectFolders(node, parentPath = "") {
+export function collectFolders(node, parentPath = "") {
   const results = [];
   if (!node || node.type !== "folder") return results;
 

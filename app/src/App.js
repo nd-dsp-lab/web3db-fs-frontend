@@ -1040,15 +1040,11 @@ function App() {
     remapStarredFolders(folderPath);
   };
 
-  // --- FOLDER RENAME ---
-  // Paths live on-chain per file, so renaming a folder moves every owned
+  // --- FOLDER RENAME & MOVE ---
+  // Paths live on-chain per file, so relocating a folder moves every owned
   // file under it — one moveFiles tx, one signature. Empty folders are
   // local-only: just rewrite their paths in the set.
-  const handleRenameFolder = async (folderPath, newName) => {
-    const parent = folderPath.slice(0, folderPath.lastIndexOf("/"));
-    const newPath = `${parent}/${newName}`;
-    if (newPath === folderPath) return;
-
+  const relocateFolder = async (folderPath, newPath, label, doneMsg) => {
     const rewriteEmptyFolders = () => setEmptyFolders(prev => {
       const next = new Set();
       for (const p of prev) {
@@ -1065,12 +1061,27 @@ function App() {
     if (affected.length === 0) {
       rewriteEmptyFolders();
       remapStarredFolders(folderPath, newPath);
-      toast.success("Folder renamed");
+      toast.success(doneMsg);
       return;
     }
-    await runBatchMove(affected, "Renaming", (f) => newPath + fullPathOf(f).slice(folderPath.length));
+    await runBatchMove(affected, label, (f) => newPath + fullPathOf(f).slice(folderPath.length));
     rewriteEmptyFolders();
     remapStarredFolders(folderPath, newPath);
+  };
+
+  const handleRenameFolder = (folderPath, newName) => {
+    const parent = folderPath.slice(0, folderPath.lastIndexOf("/"));
+    const newPath = `${parent}/${newName}`;
+    if (newPath === folderPath) return;
+    return relocateFolder(folderPath, newPath, "Renaming", "Folder renamed");
+  };
+
+  const handleMoveFolder = (folderPath, destFolder) => {
+    const name = folderPath.slice(folderPath.lastIndexOf("/") + 1);
+    const newPath = destFolder === "/" ? `/${name}` : `${destFolder}/${name}`;
+    // No-op if already there; refuse moving a folder into itself
+    if (newPath === folderPath || destFolder === folderPath || destFolder.startsWith(folderPath + "/")) return;
+    return relocateFolder(folderPath, newPath, "Moving", "Folder moved");
   };
 
   return (
@@ -1089,6 +1100,7 @@ function App() {
       setUploadMode={setUploadMode}
       handleCreateFolder={handleCreateFolder}
       handleRenameFolder={handleRenameFolder}
+      handleMoveFolder={handleMoveFolder}
       handleTrashFolder={handleTrashFolder}
       handleMove={handleMove}
       handleDelete={handleDelete}
