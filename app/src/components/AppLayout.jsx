@@ -115,7 +115,7 @@ export default function AppLayout({
   handleBulkTrash, handleBulkRestore, handleBulkDelete,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
-  const [draggedFile, setDraggedFile] = useState(null);
+  const [draggedItem, setDraggedItem] = useState(null); // { type: "file", cid, name, fromPath } | { type: "folder", path }
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
   const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
@@ -350,18 +350,41 @@ export default function AppLayout({
   };
 
   // --- DRAG AND DROP LOGIC ---
+  // Internal drags move files/folders between folders; drop targets are
+  // folder tiles/rows, breadcrumb segments, and the My Drive nav item.
   const onFileDragStart = (file) => {
-    setDraggedFile({ cid: file.cid, name: file.name, fromPath: currentPath });
+    setDraggedItem({ type: "file", cid: file.cid, name: file.name, fromPath: currentPath });
   };
 
-  const onFolderDrop = async (e, targetFolderName) => {
-    e.preventDefault();
-    if (!draggedFile) return;
-    const targetPath = currentPath === "/" ? `/${targetFolderName}` : `${currentPath}/${targetFolderName}`;
-    const destination = `${targetPath}/${draggedFile.name}`;
-    await handleMove(draggedFile.cid, destination);
-    setDraggedFile(null);
+  const onFolderDragStart = (item) => {
+    setDraggedItem({ type: "folder", path: folderPathOf(item) });
   };
+
+  // Owned live folders only — no dragging in trash or of folders shared to me
+  const canDragFolder = (item) => !item.shared && !item.trash;
+
+  const onInternalDropTo = async (e, destFolderPath) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedItem) return;
+    const item = draggedItem;
+    setDraggedItem(null);
+    if (item.type === "file") {
+      if (item.fromPath === destFolderPath) return; // already there — skip the pointless signature
+      const destination = destFolderPath === "/" ? `/${item.name}` : `${destFolderPath}/${item.name}`;
+      await handleMove(item.cid, destination);
+    } else {
+      // handleMoveFolder no-ops on same-place and self/descendant drops
+      await handleMoveFolder(item.path, destFolderPath);
+    }
+  };
+
+  const onFolderDrop = (e, targetItem) =>
+    onInternalDropTo(e, folderPathOf(targetItem));
+
+  // Drag-over feedback for breadcrumb / nav drop targets
+  const dropHover = (e) => { if (draggedItem) { e.preventDefault(); e.currentTarget.style.backgroundColor = theme.navActive; } };
+  const dropUnhover = (e) => { e.currentTarget.style.backgroundColor = "transparent"; };
 
   const triggerUpload = (mode) => {
     setUploadMode(mode);
@@ -514,9 +537,12 @@ export default function AppLayout({
   const openDetails = (file) => { setDetailsFile(file); setDetailsOpen(true); };
 
   // --- Reusable bits ---
-  const NavItem = ({ id, icon: Icon, label }) => (
+  const NavItem = ({ id, icon: Icon, label, dropPath }) => (
     <div
       onClick={() => { setView(id); setCurrentPath("/"); setSearchQuery(""); }}
+      onDragOver={dropPath ? dropHover : undefined}
+      onDragLeave={dropPath ? (e) => { e.currentTarget.style.backgroundColor = view === id ? theme.navActive : "transparent"; } : undefined}
+      onDrop={dropPath ? (e) => { if (view !== id) e.currentTarget.style.backgroundColor = "transparent"; onInternalDropTo(e, dropPath); } : undefined}
       style={{
         display: "flex", alignItems: "center", gap: "14px", padding: "8px 16px",
         cursor: "pointer", borderRadius: "999px", fontSize: "14px",
@@ -676,7 +702,7 @@ export default function AppLayout({
         </div>
 
         <nav>
-          <NavItem id="my-drive" icon={HardDrive} label="My Drive" />
+          <NavItem id="my-drive" icon={HardDrive} label="My Drive" dropPath="/" />
           <NavItem id="shared" icon={Users} label="Shared with me" />
           <NavItem id="recent" icon={Clock} label="Recent" />
           <NavItem id="starred" icon={Star} label="Starred" />
@@ -828,6 +854,9 @@ export default function AppLayout({
                     style={{ cursor: crumbs.length ? "pointer" : "default", padding: "2px 8px", borderRadius: "8px" }}
                     onMouseEnter={(e) => { if (crumbs.length) e.currentTarget.style.backgroundColor = theme.tile; }}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                    onDragOver={view === "my-drive" ? dropHover : undefined}
+                    onDragLeave={view === "my-drive" ? dropUnhover : undefined}
+                    onDrop={view === "my-drive" ? (e) => { dropUnhover(e); onInternalDropTo(e, "/"); } : undefined}
                   >
                     {VIEW_TITLES[view] || "My Drive"}
                   </span>
@@ -839,6 +868,9 @@ export default function AppLayout({
                         style={{ cursor: i < crumbs.length - 1 ? "pointer" : "default", padding: "2px 8px", borderRadius: "8px" }}
                         onMouseEnter={(e) => { if (i < crumbs.length - 1) e.currentTarget.style.backgroundColor = theme.tile; }}
                         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+                        onDragOver={view === "my-drive" ? dropHover : undefined}
+                        onDragLeave={view === "my-drive" ? dropUnhover : undefined}
+                        onDrop={view === "my-drive" ? (e) => { dropUnhover(e); onInternalDropTo(e, crumbPath(i)); } : undefined}
                       >
                         {c}
                       </span>
@@ -957,8 +989,10 @@ export default function AppLayout({
                               navigateInto(item);
                             }}
                             onContextMenu={(e) => openMenuForFolder(e, item)}
+                            draggable={canDragFolder(item)}
+                            onDragStart={() => canDragFolder(item) && onFolderDragStart(item)}
                             onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => onFolderDrop(e, item.name)}
+                            onDrop={(e) => onFolderDrop(e, item)}
                             onMouseEnter={() => setHoveredKey(key)}
                             onMouseLeave={() => setHoveredKey(null)}
                             style={{
@@ -1078,10 +1112,10 @@ export default function AppLayout({
                       <tr
                         key={key}
                         data-cid={item.type === "file" ? item.cid : folderKeyOf(item)}
-                        draggable={item.type === "file"}
-                        onDragStart={() => item.type === "file" && onFileDragStart(item)}
+                        draggable={item.type === "file" || canDragFolder(item)}
+                        onDragStart={() => item.type === "file" ? onFileDragStart(item) : canDragFolder(item) && onFolderDragStart(item)}
                         onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
-                        onDrop={(e) => item.type === "folder" && onFolderDrop(e, item.name)}
+                        onDrop={(e) => item.type === "folder" && onFolderDrop(e, item)}
                         onContextMenu={(e) => item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item)}
                         onMouseEnter={() => setHoveredKey(key)}
                         onMouseLeave={() => setHoveredKey(null)}
