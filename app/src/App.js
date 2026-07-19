@@ -962,6 +962,37 @@ function App() {
       xhr.send(formData);
     });
 
+  // Jump to where a file lives: its folder in My Drive, the Shared view for
+  // files shared to us, or Trash for trashed ones. Used by conflict toasts.
+  const locateFile = (f) => {
+    setSearchQuery("");
+    if (isTrashed(f)) {
+      setView("trash");
+      const logical = fullPathOf(f).slice(TRASH_PREFIX.length);
+      setCurrentPath(logical.slice(0, logical.lastIndexOf("/")) || "/");
+    } else {
+      setView(f.is_owner ? "my-drive" : "shared");
+      setCurrentPath(f.folder_path || "/");
+    }
+  };
+
+  // Conflict toast for a duplicate-content upload: actionable when the
+  // existing copy is visible to us, explanatory otherwise.
+  const reportDuplicate = (tId, uploadName, cid, owner) => {
+    const existing = files.find((f) => f.cid === cid);
+    const short = (a) => `${a.slice(0, 6)}...${a.slice(-4)}`;
+    if (existing) {
+      const where = isTrashed(existing) ? "your trash"
+        : !existing.is_owner ? "Shared with me"
+        : existing.folder_path || "/";
+      const renamed = existing.filename !== uploadName ? ` as "${existing.filename}"` : "";
+      toast.update(tId, `"${uploadName}" already exists${renamed} in ${where} (identical content)`, "info",
+        { duration: 10000, action: { label: "Locate", onClick: () => locateFile(existing) } });
+    } else {
+      toast.update(tId, `An identical file was already uploaded by ${short(owner)} — content-addressed storage stores it once`, "error", { duration: 10000 });
+    }
+  };
+
   // Shared by the New-menu inputs and desktop drag-and-drop
   const submitUpload = async (endpoint, formData, count, firstName, onPrepared) => {
     const label = count > 1 ? `Uploading ${count} files` : `Uploading "${firstName}"`;
@@ -984,9 +1015,13 @@ function App() {
       if (!response.ok || !data.transaction) {
         console.error("Upload prepare failed:", data);
         if (data.reason === "file_already_exists") {
-          toast.update(tId, "This exact file already exists (identical content), owned by " + data.owner, "error", { duration: 8000 });
+          reportDuplicate(tId, firstName, data.cid, data.owner);
         } else if (skipped > 0) {
-          toast.update(tId, `Nothing to upload — ${skipped} file(s) already exist`, "info");
+          const names = data.skipped_files.map((s) => s.filename);
+          const listed = names.slice(0, 3).join(", ") + (names.length > 3 ? ` (+${names.length - 3} more)` : "");
+          const single = skipped === 1 && files.find((f) => f.cid === data.skipped_files[0].cid);
+          toast.update(tId, `Nothing to upload — already exist: ${listed}`, "info",
+            single ? { duration: 10000, action: { label: "Locate", onClick: () => locateFile(single) } } : { duration: 8000 });
         } else {
           toast.update(tId, "Upload failed. Check console for details.", "error");
         }
