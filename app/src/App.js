@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
 import ToastStack from "./components/Toast";
 import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } from "./utils/helpers";
 import { TRASH_PREFIX, SEARCH_TYPE_EXTS } from "./lib/constants";
+import { makeApi } from "./lib/api";
 
 // Trash is a hidden path prefix: "deleting" a file moves it under /.trash
 // (one on-chain move tx), restoring moves it back. No contract changes.
@@ -14,6 +15,7 @@ const fullPathOf = (f) =>
 function App() {
   // Replace with your actual backend URL
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  const api = useMemo(() => makeApi(API_BASE_URL), [API_BASE_URL]);
 
   // --- STATE MANAGEMENT ---
   const [files, setFiles] = useState([]);
@@ -205,11 +207,7 @@ function App() {
           method: "personal_sign",
           params: [hexMessage, account],
         });
-        const res = await fetch(`${API_BASE_URL}/auth/token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-          body: JSON.stringify({ address: account, timestamp, signature }),
-        });
+        const res = await api.post("/auth/token", { address: account, timestamp, signature });
         const data = await res.json();
         if (!res.ok || !data.token) throw new Error(data.error || "Token request failed");
         localStorage.setItem(key, JSON.stringify(data));
@@ -219,7 +217,7 @@ function App() {
         toast.error("Sign-in verification failed — downloads and previews disabled");
       }
     })();
-  }, [account, wallet, API_BASE_URL, getProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [account, wallet, api, getProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- GAS DRIP for fresh embedded wallets ---
   const fundRequested = useRef(new Set());
@@ -229,14 +227,7 @@ function App() {
     fundRequested.current.add(account);
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/fund-wallet`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "ngrok-skip-browser-warning": "true",
-          },
-          body: JSON.stringify({ address: account }),
-        });
+        const res = await api.post("/fund-wallet", { address: account });
         const data = await res.json();
         if (data.funded) {
           console.log(`Wallet funded with ${data.amount_eth} SepETH:`, data.tx_hash);
@@ -247,15 +238,13 @@ function App() {
         console.error("Fund-wallet request failed:", err);
       }
     })();
-  }, [account, wallet, API_BASE_URL]);
+  }, [account, wallet, api]);
 
   // --- DATA FETCHING ---
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/?user_address=${account}`, {
-        headers: { "ngrok-skip-browser-warning": "true" }
-      });
+      const response = await api.get(`/?user_address=${account}`);
       const data = await response.json();
       const filesList = data.user_files || [];
 
@@ -267,7 +256,7 @@ function App() {
     } catch (err) {
       console.error("Error retrieving files:", err);
     }
-  }, [account, emptyFolders, API_BASE_URL]);
+  }, [account, emptyFolders, api]);
 
   useEffect(() => {
     if (account) retrieveFiles();
@@ -291,14 +280,7 @@ function App() {
     });
     if (tId) toast.update(tId, "Confirming on-chain…", "loading");
 
-    const verifyResponse = await fetch(`${API_BASE_URL}/verify-upload`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
-      },
-      body: JSON.stringify({ tx_hash: txHash }),
-    });
+    const verifyResponse = await api.post("/verify-upload", { tx_hash: txHash });
     const verifyData = await verifyResponse.json();
     if (!verifyData.success) {
       throw new Error(verifyData.error || "Transaction verification failed");
@@ -319,14 +301,7 @@ function App() {
   // Resolve an email to a wallet address via the backend (Privy lookup,
   // pregenerating a wallet for unknown emails). Raw 0x input passes through.
   const resolveRecipient = async (recipient) => {
-    const response = await fetch(`${API_BASE_URL}/resolve-recipient`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true"
-      },
-      body: JSON.stringify({ recipient })
-    });
+    const response = await api.post("/resolve-recipient", { recipient });
     const data = await response.json();
     if (!response.ok || !data.address) {
       throw new Error(data.error || "Could not resolve recipient");
@@ -350,14 +325,7 @@ function App() {
         toAddress = resolved.address;
       }
       tId = toast.loading("Preparing share…");
-      const response = await fetch(`${API_BASE_URL}/share`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: JSON.stringify({ cid, to_address: toAddress, user_address: account })
-      });
+      const response = await api.post("/share", { cid, to_address: toAddress, user_address: account });
       const data = await response.json();
       if (!data.transaction) {
         console.error("Share prepare failed:", data);
@@ -369,17 +337,10 @@ function App() {
       // Best-effort email notification once the share is on-chain
       if (recipientEmail) {
         const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
-        fetch(`${API_BASE_URL}/notify-share`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "ngrok-skip-browser-warning": "true"
-          },
-          body: JSON.stringify({
-            recipient_email: recipientEmail,
-            filename: filename || "a file",
-            sharer: sharerName
-          })
+        api.post("/notify-share", {
+          recipient_email: recipientEmail,
+          filename: filename || "a file",
+          sharer: sharerName,
         }).then(async (r) => {
           const d = await r.json().catch(() => ({}));
           if (r.ok) console.log("Share notification sent to", recipientEmail);
@@ -397,14 +358,7 @@ function App() {
     let tId;
     try {
       tId = toast.loading("Revoking access…");
-      const response = await fetch(`${API_BASE_URL}/unshare`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: JSON.stringify({ cid, to_address: toAddress, user_address: account })
-      });
+      const response = await api.post("/unshare", { cid, to_address: toAddress, user_address: account });
       const data = await response.json();
       if (!data.transaction) {
         console.error("Unshare prepare failed:", data);
@@ -489,11 +443,7 @@ function App() {
         toAddress = resolved.address;
       }
       tId = toast.loading(`Sharing ${cids.length} file(s)…`);
-      const response = await fetch(`${API_BASE_URL}/share-batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({ cids, to_address: toAddress, user_address: account })
-      });
+      const response = await api.post("/share-batch", { cids, to_address: toAddress, user_address: account });
       const data = await response.json();
       if (!data.transaction) {
         console.error("Batch share prepare failed:", data);
@@ -504,14 +454,10 @@ function App() {
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       if (recipientEmail) {
         const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
-        fetch(`${API_BASE_URL}/notify-share`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-          body: JSON.stringify({
-            recipient_email: recipientEmail,
-            filename: notifyName,
-            sharer: sharerName
-          })
+        api.post("/notify-share", {
+          recipient_email: recipientEmail,
+          filename: notifyName,
+          sharer: sharerName,
         }).catch((e) => console.warn("Share notification failed:", e));
       }
       retrieveFiles();
@@ -526,11 +472,7 @@ function App() {
     let tId;
     try {
       tId = toast.loading("Revoking access…");
-      const response = await fetch(`${API_BASE_URL}/unshare-batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({ cids, to_address: toAddress, user_address: account })
-      });
+      const response = await api.post("/unshare-batch", { cids, to_address: toAddress, user_address: account });
       const data = await response.json();
       if (!data.transaction) {
         console.error("Folder unshare prepare failed:", data);
@@ -548,18 +490,7 @@ function App() {
   // Prepare + sign a single move; shared by rename, drag-move, trash,
   // restore and their bulk variants. Throws on failure — callers own toasts.
   const moveTx = async (cid, newPath, tId) => {
-    const response = await fetch(`${API_BASE_URL}/move`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true"
-      },
-      body: JSON.stringify({
-        user_address: account,
-        cid: cid,
-        new_path: newPath
-      })
-    });
+    const response = await api.post("/move", { user_address: account, cid, new_path: newPath });
     const data = await response.json();
     if (!data.transaction) {
       console.error("Move prepare failed:", data);
@@ -615,14 +546,7 @@ function App() {
     if (!window.confirm("Delete this file forever? This cannot be undone.")) return;
     const tId = toast.loading("Deleting…");
     try {
-      const response = await fetch(`${API_BASE_URL}/delete`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: JSON.stringify({ user_address: account, cid: cid })
-      });
+      const response = await api.post("/delete", { user_address: account, cid });
       const data = await response.json();
       if (!data.transaction) {
         console.error("Delete prepare failed:", data);
@@ -643,14 +567,10 @@ function App() {
   const runBatchMove = async (items, label, pathFor) => {
     const tId = toast.loading(`${label} ${items.length} file(s)…`);
     try {
-      const response = await fetch(`${API_BASE_URL}/move-batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({
-          user_address: account,
-          cids: items.map((f) => f.cid),
-          new_paths: items.map((f) => pathFor(f)),
-        }),
+      const response = await api.post("/move-batch", {
+        user_address: account,
+        cids: items.map((f) => f.cid),
+        new_paths: items.map((f) => pathFor(f)),
       });
       const data = await response.json();
       if (!data.transaction) {
@@ -775,14 +695,7 @@ function App() {
     if (!window.confirm(`Permanently delete ${all.length} file(s)? This cannot be undone.`)) return;
     const tId = toast.loading(`Deleting ${all.length} file(s)…`);
     try {
-      const response = await fetch(`${API_BASE_URL}/delete-batch`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: JSON.stringify({ user_address: account, cids: all.map((f) => f.cid) })
-      });
+      const response = await api.post("/delete-batch", { user_address: account, cids: all.map((f) => f.cid) });
       const data = await response.json();
       if (!data.transaction) {
         console.error("Batch delete prepare failed:", data);
@@ -935,11 +848,11 @@ function App() {
   // Real capacity for the usage bar: what the IPFS node's disk can still take
   const [diskFree, setDiskFree] = useState(null);
   useEffect(() => {
-    fetch(`${API_BASE_URL}/storage-stats`, { headers: { "ngrok-skip-browser-warning": "true" } })
+    api.get("/storage-stats")
       .then((r) => r.json())
       .then((d) => { if (d.disk_free != null) setDiskFree(d.disk_free); })
       .catch(() => {});
-  }, [API_BASE_URL]);
+  }, [api]);
   const storageQuota = diskFree != null ? storageUsed + diskFree : null;
 
   // --- UPLOAD LOGIC ---
@@ -998,7 +911,7 @@ function App() {
     const tId = toast.loading(`${label}… 0%`, { progress: 0 });
     try {
       let lastPct = -1;
-      const response = await uploadWithProgress(`${API_BASE_URL}${endpoint}`, formData, (pct) => {
+      const response = await uploadWithProgress(api.url(endpoint), formData, (pct) => {
         if (pct === lastPct) return; // don't re-render on every byte event
         lastPct = pct;
         if (pct < 100) toast.update(tId, `${label}… ${pct}%`, "loading", { progress: pct });
@@ -1109,14 +1022,7 @@ function App() {
     const isTrashPurge = folderPath === TRASH_PREFIX;
     const tId = toast.loading(isTrashPurge ? "Emptying trash…" : "Deleting folder…");
     try {
-      const response = await fetch(`${API_BASE_URL}/delete-folder`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "ngrok-skip-browser-warning": "true"
-        },
-        body: JSON.stringify({ folder_path: folderPath, user_address: account })
-      });
+      const response = await api.post("/delete-folder", { folder_path: folderPath, user_address: account });
       const data = await response.json();
       if (data.error) {
         console.error("Delete folder prepare failed:", data);
