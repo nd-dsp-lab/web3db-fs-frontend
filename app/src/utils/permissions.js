@@ -1,9 +1,0 @@
-// Bitmasks for permissions
-export const READ = 1 << 0
-export const WRITE = 1 << 1
-export const DOWNLOAD = 1 << 2
-export const DELETE = 1 << 3
-export const SHARE = 1 << 4
-export const MOVE = 1 << 5
-export const CHANGE_OWNER = 1 << 6
-export const CHANGE_ROLE = 1 << 7
