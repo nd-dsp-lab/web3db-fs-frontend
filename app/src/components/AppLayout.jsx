@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Plus, Folder, FileText, Image as ImageIcon, Video, Music, Archive,
-  FileCode, File as FileIcon, HardDrive, Users, LayoutGrid, List as ListIcon,
+  Plus, Folder, HardDrive, Users, LayoutGrid, List as ListIcon,
   ChevronRight, MoreVertical, Trash2, Search, Upload, FolderUp, FolderPlus,
   Sun, Moon, Clock, Star, Cloud, Download, X, RotateCcw, Info, ArrowUp, ArrowDown, Pencil, UserPlus, FolderInput,
 } from "lucide-react";
@@ -10,6 +9,9 @@ import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
 import RenameModal from "./RenameModal";
+import { Thumbnail, hasThumbnailFor } from "./Thumbnail";
+import { fileVisual, formatBytes } from "../lib/fileTypes";
+import { STORAGE_QUOTA } from "../lib/constants";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
 // out in the tile's background color (lucide has no combined icon)
@@ -24,83 +26,6 @@ const SharedFolderIcon = ({ size = 20, color, badge }) => (
     />
   </span>
 );
-
-// Pick an icon + accent color from the file extension, similar to how
-// Drive colors PDFs red, sheets green, etc.
-export function fileVisual(filename = "") {
-  const ext = filename.split(".").pop().toLowerCase();
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext))
-    return { Icon: ImageIcon, color: "#188038" };
-  if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext))
-    return { Icon: Video, color: "#d93025" };
-  if (["mp3", "wav", "ogg", "flac", "m4a"].includes(ext))
-    return { Icon: Music, color: "#f29900" };
-  if (["zip", "tar", "gz", "rar", "7z"].includes(ext))
-    return { Icon: Archive, color: "#5f6368" };
-  if (["js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "java", "json", "html", "css", "sh"].includes(ext))
-    return { Icon: FileCode, color: "#1a73e8" };
-  if (["pdf"].includes(ext))
-    return { Icon: FileText, color: "#d93025" };
-  if (["doc", "docx", "txt", "md", "rtf"].includes(ext))
-    return { Icon: FileText, color: "#1a73e8" };
-  if (["xls", "xlsx", "csv"].includes(ext))
-    return { Icon: FileText, color: "#188038" };
-  return { Icon: FileIcon, color: "#5f6368" };
-}
-
-const THUMBNAIL_EXTENSIONS = [
-  // images + pdf (rendered directly)
-  "png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf",
-  // text-like files (backend renders a page snippet)
-  "txt", "md", "csv", "json", "js", "jsx", "ts", "tsx", "py", "html", "css",
-  "xml", "yaml", "yml", "toml", "ini", "log", "sh", "c", "cpp", "h", "java",
-  "go", "rs", "rb", "sql", "env", "cfg", "conf",
-];
-const hasThumbnail = (filename = "") => THUMBNAIL_EXTENSIONS.includes(filename.split(".").pop().toLowerCase());
-
-// CID -> object URL (or "failed"); module-level so navigation and re-renders
-// never refetch. Thumbnails are fetched with fetch() rather than <img src>
-// because the ngrok tunnel needs the skip-warning header.
-const thumbCache = new Map();
-
-export function hasThumbnailFor(filename) { return hasThumbnail(filename); }
-
-export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) {
-  const [src, setSrc] = useState(() => thumbCache.get(cid) || null);
-  useEffect(() => {
-    if (thumbCache.has(cid)) { setSrc(thumbCache.get(cid)); return; }
-    if (!authToken) return; // wait for download auth before requesting
-    let cancelled = false;
-    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } })
-      .then((r) => (r.ok && r.headers.get("content-type")?.startsWith("image/") ? r.blob() : Promise.reject()))
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        thumbCache.set(cid, url);
-        if (!cancelled) setSrc(url);
-      })
-      .catch(() => {
-        thumbCache.set(cid, "failed");
-        if (!cancelled) setSrc("failed");
-      });
-    return () => { cancelled = true; };
-  }, [cid, API_BASE_URL, authToken]);
-
-  if (!src || src === "failed") return fallback;
-  // Photos crop from the center; document-style thumbs (text, PDF) are
-  // top-anchored so short content isn't cropped away to a blank strip.
-  const isPhoto = ["png", "jpg", "jpeg", "gif", "webp", "bmp"].includes(filename.split(".").pop().toLowerCase());
-  return <img src={src} alt={filename} style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: isPhoto ? "center" : "top", borderRadius: "8px" }} />;
-}
-
-export function formatBytes(bytes) {
-  if (!bytes) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const value = bytes / Math.pow(1024, i);
-  return `${value >= 10 || i === 0 ? Math.round(value) : value.toFixed(1)} ${units[i]}`;
-}
-
-const STORAGE_QUOTA = 1024 ** 3; // fallback for the usage bar until /storage-stats responds
 
 const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred", trash: "Trash" };
 
@@ -1195,7 +1120,7 @@ export default function AppLayout({
                               margin: "0 8px 8px", height: "110px", borderRadius: "8px", overflow: "hidden",
                               backgroundColor: theme.card, display: "flex", alignItems: "center", justifyContent: "center",
                             }}>
-                              {hasThumbnail(item.filename) ? (
+                              {hasThumbnailFor(item.filename) ? (
                                 <Thumbnail
                                   cid={item.cid}
                                   filename={item.filename}

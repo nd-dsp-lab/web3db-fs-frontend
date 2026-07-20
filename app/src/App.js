@@ -3,21 +3,10 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
 import ToastStack from "./components/Toast";
 import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } from "./utils/helpers";
+import { TRASH_PREFIX, SEARCH_TYPE_EXTS } from "./lib/constants";
 
 // Trash is a hidden path prefix: "deleting" a file moves it under /.trash
 // (one on-chain move tx), restoring moves it back. No contract changes.
-const TRASH_PREFIX = "/.trash";
-
-// Extension buckets for the search type-filter chips
-const SEARCH_TYPE_EXTS = {
-  pdf: ["pdf"],
-  image: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"],
-  doc: ["doc", "docx", "txt", "md", "rtf", "csv", "xls", "xlsx", "ppt", "pptx"],
-  video: ["mp4", "mov", "avi", "mkv", "webm"],
-  audio: ["mp3", "wav", "ogg", "flac", "m4a"],
-  code: ["js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "h", "java", "json", "html", "css", "sh", "yml", "yaml"],
-  archive: ["zip", "tar", "gz", "rar", "7z"],
-};
 const isTrashed = (f) => (f.folder_path || "/").startsWith(TRASH_PREFIX);
 const fullPathOf = (f) =>
   (f.folder_path === "/" || !f.folder_path) ? `/${f.filename}` : `${f.folder_path}/${f.filename}`;

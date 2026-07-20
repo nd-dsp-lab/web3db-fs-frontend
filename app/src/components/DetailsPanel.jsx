@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { X, Copy, ExternalLink, Star, Folder, Layers } from "lucide-react";
-import { fileVisual, formatBytes, Thumbnail, hasThumbnailFor } from "./AppLayout";
+import { fileVisual, formatBytes } from "../lib/fileTypes";
+import { Thumbnail, hasThumbnailFor } from "./Thumbnail";
 
 const short = (addr = "") => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : "—");
 
