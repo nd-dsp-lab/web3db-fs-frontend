@@ -592,6 +592,11 @@ export default function AppLayout({
     setSortBy, setSortDir, detailsOpen, setDetailsOpen,
     searchType, setSearchType, searchScope, setSearchScope,
     newMenuItems,
+    // FolderMenu
+    fileTree, toggleStarFolder, folderCidsOf,
+    folderOrganizeOpen, setFolderOrganizeOpen,
+    downloadFolder, openDetails, setShareFile, promptRenameFolder,
+    handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
   };
 
   return (
@@ -687,25 +692,7 @@ export default function AppLayout({
       )}
 
       {folderMenu && (
-        <FolderMenu
-          folderMenu={folderMenu}
-          setFolderMenu={setFolderMenu}
-          theme={theme}
-          fileTree={fileTree}
-          starredFolders={starredFolders}
-          toggleStarFolder={toggleStarFolder}
-          folderCidsOf={folderCidsOf}
-          folderOrganizeOpen={folderOrganizeOpen}
-          setFolderOrganizeOpen={setFolderOrganizeOpen}
-          downloadFolder={downloadFolder}
-          openDetails={openDetails}
-          setShareFile={setShareFile}
-          promptRenameFolder={promptRenameFolder}
-          handleMoveFolder={handleMoveFolder}
-          handleTrashFolder={handleTrashFolder}
-          handleRestoreFolder={handleRestoreFolder}
-          handleDeleteFolderForever={handleDeleteFolderForever}
-        />
+        <FolderMenu folderMenu={folderMenu} setFolderMenu={setFolderMenu} />
       )}
 
       {selMenu && (

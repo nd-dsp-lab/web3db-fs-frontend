@@ -1,16 +1,18 @@
 import { RotateCcw, Trash2, Download, Star, Info, UserPlus, Pencil, FolderInput, ChevronRight, Folder } from "lucide-react";
 import { collectFolders, SHORTCUTS } from "./FileContextMenu";
+import { useLayout } from "../contexts/LayoutContext";
 
 // Right-click menu for a folder tile/row. Owned folders get the full set
 // (download, details, share, rename, organize=star+move, trash); folders
 // shared to the user get a reduced set; trashed folders get restore/delete.
-export default function FolderMenu({
-  folderMenu, setFolderMenu, theme, fileTree,
-  starredFolders, toggleStarFolder, folderCidsOf,
-  folderOrganizeOpen, setFolderOrganizeOpen,
-  downloadFolder, openDetails, setShareFile, promptRenameFolder,
-  handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
-}) {
+export default function FolderMenu({ folderMenu, setFolderMenu }) {
+  const {
+    theme, fileTree,
+    starredFolders, toggleStarFolder, folderCidsOf,
+    folderOrganizeOpen, setFolderOrganizeOpen,
+    downloadFolder, openDetails, setShareFile, promptRenameFolder,
+    handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
+  } = useLayout();
   const Row = ({ Icon, label, color, onClick, right }) => (
     <div
       onClick={onClick}
