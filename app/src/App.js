@@ -6,6 +6,8 @@ import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } fr
 import { TRASH_PREFIX, SEARCH_TYPE_EXTS } from "./lib/constants";
 import { makeApi } from "./lib/api";
 import { useToasts } from "./hooks/useToasts";
+import { useEmptyFolders } from "./hooks/useEmptyFolders";
+import { useStarred } from "./hooks/useStarred";
 
 // Trash is a hidden path prefix: "deleting" a file moves it under /.trash
 // (one on-chain move tx), restoring moves it back. No contract changes.
@@ -26,9 +28,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState(null); // null | "folder" | key of SEARCH_TYPE_EXTS
   const [searchScope, setSearchScope] = useState("all"); // "all" | "folder" (current folder subtree)
-  const [emptyFolders, setEmptyFolders] = useState(new Set());
   const [uploadMode, setUploadMode] = useState("single");
-  const [starred, setStarred] = useState(new Set());
 
   // --- TOASTS ---
   const { toasts, dismissToast, pushToast, toast } = useToasts();
@@ -65,86 +65,8 @@ function App() {
 
   const connectWallet = () => login();
 
-  // --- EMPTY FOLDERS (local per account) ---
-  // Folders only exist on-chain as file-path prefixes, so an empty folder
-  // has no on-chain record. Persist them locally until a file lands in them.
-  useEffect(() => {
-    if (!account) { setEmptyFolders(new Set()); return; }
-    try {
-      const saved = JSON.parse(localStorage.getItem(`emptyFolders:${account.toLowerCase()}`) || "[]");
-      setEmptyFolders(new Set(saved));
-    } catch {
-      setEmptyFolders(new Set());
-    }
-  }, [account]);
-
-  const persistEmptyFolders = (next) => {
-    if (account) localStorage.setItem(`emptyFolders:${account.toLowerCase()}`, JSON.stringify([...next]));
-    return next;
-  };
-
-  // --- STARRED (local per account; CIDs are stable so localStorage is enough) ---
-  useEffect(() => {
-    if (!account) { setStarred(new Set()); return; }
-    try {
-      const saved = JSON.parse(localStorage.getItem(`starred:${account.toLowerCase()}`) || "[]");
-      setStarred(new Set(saved));
-    } catch {
-      setStarred(new Set());
-    }
-  }, [account]);
-
-  const toggleStar = (cid) => {
-    if (!account) return;
-    setStarred((prev) => {
-      const next = new Set(prev);
-      next.has(cid) ? next.delete(cid) : next.add(cid);
-      localStorage.setItem(`starred:${account.toLowerCase()}`, JSON.stringify([...next]));
-      return next;
-    });
-  };
-
-  // --- STARRED FOLDERS (folders have no CID, so stars are keyed by path;
-  // rename/trash/delete rewrite or remove them) ---
-  const [starredFolders, setStarredFolders] = useState(new Set());
-  useEffect(() => {
-    if (!account) { setStarredFolders(new Set()); return; }
-    try {
-      const saved = JSON.parse(localStorage.getItem(`starredFolders:${account.toLowerCase()}`) || "[]");
-      setStarredFolders(new Set(saved));
-    } catch {
-      setStarredFolders(new Set());
-    }
-  }, [account]);
-
-  const persistStarredFolders = (next) => {
-    if (account) localStorage.setItem(`starredFolders:${account.toLowerCase()}`, JSON.stringify([...next]));
-    return next;
-  };
-
-  const toggleStarFolder = (folderPath) => {
-    if (!account) return;
-    setStarredFolders((prev) => {
-      const next = new Set(prev);
-      next.has(folderPath) ? next.delete(folderPath) : next.add(folderPath);
-      return persistStarredFolders(next);
-    });
-  };
-
-  // Drop stars for a folder (and its subfolders), or remap them on rename
-  const remapStarredFolders = (folderPath, newPath = null) => {
-    setStarredFolders((prev) => {
-      const next = new Set();
-      for (const p of prev) {
-        if (p === folderPath || p.startsWith(folderPath + "/")) {
-          if (newPath) next.add(newPath + p.slice(folderPath.length));
-        } else {
-          next.add(p);
-        }
-      }
-      return persistStarredFolders(next);
-    });
-  };
+  const { emptyFolders, setEmptyFolders, persistEmptyFolders } = useEmptyFolders(account);
+  const { starred, starredFolders, toggleStar, toggleStarFolder, toggleStarMany, remapStarredFolders } = useStarred(account);
 
   const disconnectWallet = async () => {
     await logout();
@@ -691,27 +613,6 @@ function App() {
     }
   };
 
-  // Bulk star: if every selected file is already starred, unstar them all.
-  // folderPaths lets multi-select star folders in the same gesture — the
-  // all-starred check spans both sets so the toggle stays consistent.
-  const toggleStarMany = (cids, folderPaths = []) => {
-    if (!account) return;
-    const allStarred =
-      cids.every((c) => starred.has(c)) && folderPaths.every((p) => starredFolders.has(p));
-    setStarred((prev) => {
-      const next = new Set(prev);
-      cids.forEach((c) => (allStarred ? next.delete(c) : next.add(c)));
-      localStorage.setItem(`starred:${account.toLowerCase()}`, JSON.stringify([...next]));
-      return next;
-    });
-    if (folderPaths.length) {
-      setStarredFolders((prev) => {
-        const next = new Set(prev);
-        folderPaths.forEach((p) => (allStarred ? next.delete(p) : next.add(p)));
-        return persistStarredFolders(next);
-      });
-    }
-  };
 
   // --- DYNAMIC ITEM FILTERING ---
   const asFileItem = (f) => ({ ...f, type: "file", name: f.filename || f.name });
