@@ -15,6 +15,7 @@ import FileList from "./FileList";
 import BackgroundMenu from "./BackgroundMenu";
 import FolderMenu from "./FolderMenu";
 import SelectionMenu from "./SelectionMenu";
+import { useSelection } from "../hooks/useSelection";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
 // out in the tile's background color (lucide has no combined icon)
@@ -53,26 +54,12 @@ export default function AppLayout({
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
-  const [selected, setSelected] = useState(new Set()); // file CIDs + "folder:{path}" keys
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsFile, setDetailsFile] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null); // { type: "file", file } | { type: "folder", name, path }
 
-  // Selection is scoped to what's on screen: clear on any navigation, and on Escape
-  useEffect(() => { setSelected(new Set()); }, [view, currentPath, searchQuery]);
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") setSelected(new Set()); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  const toggleSelect = (cid) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.has(cid) ? next.delete(cid) : next.add(cid);
-      return next;
-    });
-  };
+  const { selected, setSelected, toggleSelect, clearSelection, band, contentRef, onBandStart } =
+    useSelection({ view, currentPath, searchQuery });
 
   // Close the New dropdown on outside click or Escape (clicks inside the
   // container are stopped from propagating below)
@@ -182,51 +169,6 @@ export default function AppLayout({
       document.removeEventListener("keydown", onKey);
     };
   }, [bgMenu, folderMenu, selMenu]);
-
-  // --- RUBBER-BAND SELECTION ---
-  // Drag from empty content-area background to draw a selection box; file
-  // tiles/rows intersecting it get selected. Ctrl/shift-drag adds to the
-  // existing selection. A plain click on empty space clears it.
-  const contentRef = useRef(null);
-  const [band, setBand] = useState(null); // viewport coords {left, top, right, bottom}
-
-  const onBandStart = (e) => {
-    if (e.button !== 0) return;
-    // Only start from true background — not tiles, rows, or controls
-    if (e.target.closest("[data-cid],[data-noselect],button,input,a,table thead")) return;
-    const additive = e.ctrlKey || e.metaKey || e.shiftKey;
-    const base = additive ? new Set(selected) : new Set();
-    const start = { x: e.clientX, y: e.clientY };
-    let moved = false;
-    document.body.style.userSelect = "none";
-
-    const onMove = (ev) => {
-      if (!moved && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 4) return;
-      moved = true;
-      const rect = {
-        left: Math.min(start.x, ev.clientX), right: Math.max(start.x, ev.clientX),
-        top: Math.min(start.y, ev.clientY), bottom: Math.max(start.y, ev.clientY),
-      };
-      setBand(rect);
-      const hits = new Set(base);
-      contentRef.current?.querySelectorAll("[data-cid]").forEach((el) => {
-        const r = el.getBoundingClientRect();
-        if (r.left < rect.right && r.right > rect.left && r.top < rect.bottom && r.bottom > rect.top) {
-          hits.add(el.dataset.cid);
-        }
-      });
-      setSelected(hits);
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      document.body.style.userSelect = "";
-      setBand(null);
-      if (!moved && !additive) setSelected(new Set());
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  };
 
   const downloadFile = async (file) => {
     if (!account) {
@@ -449,7 +391,6 @@ export default function AppLayout({
   const selectedFolders = folders.filter((i) => selected.has(folderKeyOf(i)));
   const selectedCount = selectedFiles.length + selectedFolders.length;
   const someSelected = selectedCount > 0;
-  const clearSelection = () => setSelected(new Set());
 
   // Multi-select share: owned files + owned folders expanded to their cids,
   // presented through the ShareModal's folder mode as one grantFiles tx.
