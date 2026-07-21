@@ -16,6 +16,7 @@ import BackgroundMenu from "./BackgroundMenu";
 import FolderMenu from "./FolderMenu";
 import SelectionMenu from "./SelectionMenu";
 import { useSelection } from "../hooks/useSelection";
+import { LayoutContext } from "../contexts/LayoutContext";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
 // out in the tile's background color (lucide has no combined icon)
@@ -566,7 +567,25 @@ export default function AppLayout({
     />
   );
 
+  // Bundle the values the deep view components need, so they can pull from
+  // context instead of being threaded long prop chains through AppLayout.
+  const layoutCtx = {
+    theme, view,
+    folders, fileItems,
+    hoveredKey, setHoveredKey,
+    selected, setSelected, toggleSelect, someSelected, selectedCount,
+    navigateInto, setPreviewFile,
+    openMenuForFile, openMenuForFolder,
+    canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
+    folderKeyOf, folderPathOf, folderSharedCount,
+    starred, starredFolders,
+    SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
+    sortBy, sortDir, toggleSort,
+    API_BASE_URL, authToken,
+  };
+
   return (
+    <LayoutContext.Provider value={layoutCtx}>
     <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: "'Google Sans', Roboto, Arial, sans-serif", color: theme.text }}>
       {/* SIDEBAR */}
       <Sidebar
@@ -668,35 +687,7 @@ export default function AppLayout({
           {/* CONTENT */}
           <div ref={contentRef} onMouseDown={onBandStart} onContextMenu={onBackgroundContextMenu} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
             {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
-              <FileGrid
-                folders={folders}
-                fileItems={fileItems}
-                theme={theme}
-                hoveredKey={hoveredKey}
-                setHoveredKey={setHoveredKey}
-                someSelected={someSelected}
-                toggleSelect={toggleSelect}
-                navigateInto={navigateInto}
-                openMenuForFolder={openMenuForFolder}
-                openMenuForFile={openMenuForFile}
-                canDragFolder={canDragFolder}
-                onFolderDragStart={onFolderDragStart}
-                onFolderDrop={onFolderDrop}
-                onFileDragStart={onFileDragStart}
-                setPreviewFile={setPreviewFile}
-                folderKeyOf={folderKeyOf}
-                folderSharedCount={folderSharedCount}
-                folderPathOf={folderPathOf}
-                starredFolders={starredFolders}
-                starred={starred}
-                SelectBox={SelectBox}
-                MoreButton={MoreButton}
-                SharedFolderIcon={SharedFolderIcon}
-                sectionLabel={sectionLabel}
-                highlightName={highlightName}
-                API_BASE_URL={API_BASE_URL}
-                authToken={authToken}
-              />
+              <FileGrid />
             ) : (
               <FileList
                 theme={theme}
@@ -886,5 +877,6 @@ export default function AppLayout({
         />
       )}
     </div>
+    </LayoutContext.Provider>
   );
 }

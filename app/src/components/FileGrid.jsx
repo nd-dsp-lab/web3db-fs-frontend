@@ -1,17 +1,19 @@
 import { Folder, Star } from "lucide-react";
 import { Thumbnail } from "./Thumbnail";
 import { fileVisual, hasThumbnailFor } from "../lib/fileTypes";
+import { useLayout } from "../contexts/LayoutContext";
 
 // Grid view: folder tiles followed by file cards with thumbnails.
-export default function FileGrid({
-  folders, fileItems, theme,
-  hoveredKey, setHoveredKey, someSelected,
-  toggleSelect, navigateInto, openMenuForFolder, openMenuForFile,
-  canDragFolder, onFolderDragStart, onFolderDrop, onFileDragStart, setPreviewFile,
-  folderKeyOf, folderSharedCount, folderPathOf, starredFolders, starred,
-  SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
-  API_BASE_URL, authToken,
-}) {
+export default function FileGrid() {
+  const {
+    folders, fileItems, theme,
+    hoveredKey, setHoveredKey, someSelected,
+    toggleSelect, navigateInto, openMenuForFolder, openMenuForFile,
+    canDragFolder, onFolderDragStart, onFolderDrop, onFileDragStart, setPreviewFile,
+    folderKeyOf, folderSharedCount, folderPathOf, starredFolders, starred,
+    SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
+    API_BASE_URL, authToken,
+  } = useLayout();
   return (
     <>
       {folders.length > 0 && (
