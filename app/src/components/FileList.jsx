@@ -1,19 +1,21 @@
 import { Folder, Star, ArrowUp, ArrowDown } from "lucide-react";
 import { fileVisual, formatBytes } from "../lib/fileTypes";
+import { useLayout } from "../contexts/LayoutContext";
 
 // List view: a sortable table of folders then files with Name / Sharing /
 // Uploaded / Size / CID columns.
-export default function FileList({
-  theme, folders, fileItems,
-  sortBy, sortDir, toggleSort,
-  selectedCount, setSelected, folderKeyOf,
-  hoveredKey, setHoveredKey, someSelected,
-  toggleSelect, navigateInto, setPreviewFile,
-  openMenuForFile, openMenuForFolder,
-  canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
-  folderSharedCount, folderPathOf, starred, starredFolders,
-  SelectBox, MoreButton, SharedFolderIcon, highlightName,
-}) {
+export default function FileList() {
+  const {
+    theme, folders, fileItems,
+    sortBy, sortDir, toggleSort,
+    selectedCount, setSelected, folderKeyOf,
+    hoveredKey, setHoveredKey, someSelected,
+    toggleSelect, navigateInto, setPreviewFile,
+    openMenuForFile, openMenuForFolder,
+    canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
+    folderSharedCount, folderPathOf, starred, starredFolders,
+    SelectBox, MoreButton, SharedFolderIcon, highlightName,
+  } = useLayout();
   const SortHeader = ({ label, col, style: extra }) => (
     <th
       onClick={() => toggleSort(col)}

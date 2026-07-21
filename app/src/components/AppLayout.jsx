@@ -689,37 +689,7 @@ export default function AppLayout({
             {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
               <FileGrid />
             ) : (
-              <FileList
-                theme={theme}
-                folders={folders}
-                fileItems={fileItems}
-                sortBy={sortBy}
-                sortDir={sortDir}
-                toggleSort={toggleSort}
-                selectedCount={selectedCount}
-                setSelected={setSelected}
-                folderKeyOf={folderKeyOf}
-                hoveredKey={hoveredKey}
-                setHoveredKey={setHoveredKey}
-                someSelected={someSelected}
-                toggleSelect={toggleSelect}
-                navigateInto={navigateInto}
-                setPreviewFile={setPreviewFile}
-                openMenuForFile={openMenuForFile}
-                openMenuForFolder={openMenuForFolder}
-                canDragFolder={canDragFolder}
-                onFileDragStart={onFileDragStart}
-                onFolderDragStart={onFolderDragStart}
-                onFolderDrop={onFolderDrop}
-                folderSharedCount={folderSharedCount}
-                folderPathOf={folderPathOf}
-                starred={starred}
-                starredFolders={starredFolders}
-                SelectBox={SelectBox}
-                MoreButton={MoreButton}
-                SharedFolderIcon={SharedFolderIcon}
-                highlightName={highlightName}
-              />
+              <FileList />
             )}
           </div>
         </div>
