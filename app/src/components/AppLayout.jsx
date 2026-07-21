@@ -6,7 +6,7 @@ import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
-import RenameModal from "./RenameModal";
+import NameModal from "./NameModal";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Toolbar from "./Toolbar";
@@ -58,6 +58,7 @@ export default function AppLayout({
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsFile, setDetailsFile] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null); // { type: "file", file } | { type: "folder", name, path }
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
 
   const { selected, setSelected, toggleSelect, clearSelection, band, contentRef, onBandStart } =
     useSelection({ view, currentPath, searchQuery });
@@ -518,7 +519,7 @@ export default function AppLayout({
   // Clickable list-view column header; arrow shows the active sort direction
   // Shared by the New button dropdown and the background right-click menu
   const newMenuItems = [
-    { Icon: FolderPlus, label: "New folder", action: () => { const n = prompt("Folder name"); if (n) handleCreateFolder(n); } },
+    { Icon: FolderPlus, label: "New folder", action: () => setNewFolderOpen(true) },
     { Icon: Upload, label: "File upload", action: () => triggerUpload("single") },
     { Icon: FolderUp, label: "Folder upload", action: () => triggerUpload("folder") },
   ];
@@ -747,8 +748,21 @@ export default function AppLayout({
         />
       )}
 
+      {newFolderOpen && (
+        <NameModal
+          title="New folder"
+          submitLabel="Create"
+          initialName=""
+          isFolder
+          darkMode={darkMode}
+          siblings={(displayItems || []).map((i) => i.name).filter(Boolean)}
+          onClose={() => setNewFolderOpen(false)}
+          onSubmit={(name) => handleCreateFolder(name)}
+        />
+      )}
+
       {renameTarget && (
-        <RenameModal
+        <NameModal
           initialName={renameTarget.type === "file" ? renameTarget.file.filename : renameTarget.name}
           isFolder={renameTarget.type === "folder"}
           darkMode={darkMode}

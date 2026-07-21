@@ -1,8 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 
-// Drive-style rename dialog. For files the base name is pre-selected so
-// typing replaces it without clobbering the extension.
-export default function RenameModal({ initialName, isFolder, darkMode, siblings = [], onClose, onSubmit }) {
+// Drive-style name dialog, used for both Rename and New folder. For a file
+// rename the base name is pre-selected so typing replaces it without
+// clobbering the extension; for New folder initialName is "" (empty input).
+export default function NameModal({
+  initialName = "",
+  isFolder,
+  darkMode,
+  siblings = [],
+  title = "Rename",
+  submitLabel = "OK",
+  onClose,
+  onSubmit,
+}) {
   const [name, setName] = useState(initialName);
   const inputRef = useRef(null);
 
@@ -47,7 +57,7 @@ export default function RenameModal({ initialName, isFolder, darkMode, siblings 
           borderRadius: "16px", padding: "24px", boxShadow: "0 8px 28px rgba(0,0,0,0.3)",
         }}
       >
-        <div style={{ fontSize: "20px", marginBottom: "18px" }}>Rename</div>
+        <div style={{ fontSize: "20px", marginBottom: "18px" }}>{title}</div>
         <input
           ref={inputRef}
           value={name}
@@ -82,7 +92,7 @@ export default function RenameModal({ initialName, isFolder, darkMode, siblings 
               color: canSubmit ? "#fff" : theme.subText, fontSize: "14px", fontWeight: 500,
             }}
           >
-            OK
+            {submitLabel}
           </button>
         </div>
       </div>
