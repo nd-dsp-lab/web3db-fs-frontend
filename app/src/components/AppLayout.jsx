@@ -600,6 +600,8 @@ export default function AppLayout({
     // Sidebar
     setView, setSearchQuery, isNewMenuOpen, setIsNewMenuOpen,
     storageUsed, storageQuota,
+    // Header
+    darkMode, toggleTheme, account, connectWallet, disconnectWallet, user,
   };
 
   return (
@@ -610,17 +612,7 @@ export default function AppLayout({
 
       {/* MAIN CONTENT AREA */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <Header
-          theme={theme}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          darkMode={darkMode}
-          toggleTheme={toggleTheme}
-          account={account}
-          connectWallet={connectWallet}
-          disconnectWallet={disconnectWallet}
-          user={user}
-        />
+        <Header />
 
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div

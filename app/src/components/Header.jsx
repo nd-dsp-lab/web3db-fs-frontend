@@ -1,10 +1,12 @@
 import { Search, Sun, Moon } from "lucide-react";
+import { useLayout } from "../contexts/LayoutContext";
 
 // Top bar: search box, theme toggle, and the account chip / sign-in button.
-export default function Header({
-  theme, searchQuery, setSearchQuery, darkMode, toggleTheme,
-  account, connectWallet, disconnectWallet, user,
-}) {
+export default function Header() {
+  const {
+    theme, searchQuery, setSearchQuery, darkMode, toggleTheme,
+    account, connectWallet, disconnectWallet, user,
+  } = useLayout();
   // Account chip: social users see name/email, wallet users see the address
   const displayName = user?.google?.name || user?.email?.address ||
     (account ? `${account.slice(0, 6)}...${account.slice(-4)}` : null);
