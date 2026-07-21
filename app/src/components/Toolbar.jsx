@@ -3,27 +3,29 @@ import {
   X, Star, UserPlus, Download, RotateCcw, Trash2, ChevronRight,
   ArrowUp, ArrowDown, Info, List as ListIcon, LayoutGrid,
 } from "lucide-react";
+import { useLayout } from "../contexts/LayoutContext";
 
 const VIEW_TITLES = { "my-drive": "My Drive", shared: "Shared with me", recent: "Recent", starred: "Starred", trash: "Trash" };
 
 // The row under the header: a selection toolbar while items are selected,
 // otherwise the breadcrumb/search title, plus sort/details/view controls and
 // the search filter chips.
-export default function Toolbar({
-  theme, view,
-  // selection
-  someSelected, selectedCount, selectedFiles, selectedFolders, folderPathOf,
-  clearSelection, starred, starredFolders, toggleStarMany, ownedSelection,
-  openShareForSelection, downloadSelection, handleBulkRestore, handleBulkDelete, handleBulkTrash,
-  // breadcrumb / navigation
-  searchQuery, crumbs, crumbPath, currentPath, setCurrentPath,
-  dropHover, dropUnhover, onInternalDropTo,
-  // right-side controls
-  displayItems, handleDeleteFolder, viewMode, setViewMode,
-  sortBy, setSortBy, sortDir, setSortDir, detailsOpen, setDetailsOpen,
-  // search chips
-  searchType, setSearchType, searchScope, setSearchScope,
-}) {
+export default function Toolbar() {
+  const {
+    theme, view,
+    // selection
+    someSelected, selectedCount, selectedFiles, selectedFolders, folderPathOf,
+    clearSelection, starred, starredFolders, toggleStarMany, ownedSelection,
+    openShareForSelection, downloadSelection, handleBulkRestore, handleBulkDelete, handleBulkTrash,
+    // breadcrumb / navigation
+    searchQuery, crumbs, crumbPath, currentPath, setCurrentPath,
+    dropHover, dropUnhover, onInternalDropTo,
+    // right-side controls
+    displayItems, handleDeleteFolder, viewMode, setViewMode,
+    sortBy, setSortBy, sortDir, setSortDir, detailsOpen, setDetailsOpen,
+    // search chips
+    searchType, setSearchType, searchScope, setSearchScope,
+  } = useLayout();
   const ToolbarButton = ({ icon: Icon, title, onClick, color }) => (
     <button
       onClick={onClick}

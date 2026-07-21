@@ -582,6 +582,15 @@ export default function AppLayout({
     SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
     sortBy, sortDir, toggleSort,
     API_BASE_URL, authToken,
+    // Toolbar
+    selectedFiles, selectedFolders, clearSelection, ownedSelection,
+    toggleStarMany, openShareForSelection, downloadSelection,
+    handleBulkRestore, handleBulkDelete, handleBulkTrash,
+    searchQuery, crumbs, crumbPath, currentPath, setCurrentPath,
+    dropHover, dropUnhover, onInternalDropTo,
+    displayItems, handleDeleteFolder, viewMode, setViewMode,
+    setSortBy, setSortDir, detailsOpen, setDetailsOpen,
+    searchType, setSearchType, searchScope, setSearchScope,
   };
 
   return (
@@ -642,47 +651,7 @@ export default function AppLayout({
               </div>
             </div>
           )}
-          <Toolbar
-            theme={theme}
-            view={view}
-            someSelected={someSelected}
-            selectedCount={selectedCount}
-            selectedFiles={selectedFiles}
-            selectedFolders={selectedFolders}
-            folderPathOf={folderPathOf}
-            clearSelection={clearSelection}
-            starred={starred}
-            starredFolders={starredFolders}
-            toggleStarMany={toggleStarMany}
-            ownedSelection={ownedSelection}
-            openShareForSelection={openShareForSelection}
-            downloadSelection={downloadSelection}
-            handleBulkRestore={handleBulkRestore}
-            handleBulkDelete={handleBulkDelete}
-            handleBulkTrash={handleBulkTrash}
-            searchQuery={searchQuery}
-            crumbs={crumbs}
-            crumbPath={crumbPath}
-            currentPath={currentPath}
-            setCurrentPath={setCurrentPath}
-            dropHover={dropHover}
-            dropUnhover={dropUnhover}
-            onInternalDropTo={onInternalDropTo}
-            displayItems={displayItems}
-            handleDeleteFolder={handleDeleteFolder}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            sortBy={sortBy}
-            setSortBy={setSortBy}
-            sortDir={sortDir}
-            setSortDir={setSortDir}
-            detailsOpen={detailsOpen}
-            setDetailsOpen={setDetailsOpen}
-            searchType={searchType}
-            setSearchType={setSearchType}
-            searchScope={searchScope}
-            setSearchScope={setSearchScope}
-          />
+          <Toolbar />
 
           {/* CONTENT */}
           <div ref={contentRef} onMouseDown={onBandStart} onContextMenu={onBackgroundContextMenu} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
