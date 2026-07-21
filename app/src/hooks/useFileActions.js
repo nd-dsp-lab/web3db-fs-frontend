@@ -403,27 +403,6 @@ export function useFileActions({
     }
   };
 
-
-  // --- DYNAMIC ITEM FILTERING ---
-  const displayItems = useDisplayItems({
-    files, fileTree, view, currentPath,
-    searchQuery, searchType, searchScope,
-    emptyFolders, starred, starredFolders,
-  });
-
-  // Storage usage: only files the user owns count against them
-  const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
-
-  // Real capacity for the usage bar: what the IPFS node's disk can still take
-  const [diskFree, setDiskFree] = useState(null);
-  useEffect(() => {
-    api.get("/storage-stats")
-      .then((r) => r.json())
-      .then((d) => { if (d.disk_free != null) setDiskFree(d.disk_free); })
-      .catch(() => {});
-  }, [api]);
-  const storageQuota = diskFree != null ? storageUsed + diskFree : null;
-
   // --- UPLOAD LOGIC ---
   // XHR instead of fetch: fetch can't report request-body upload progress
   const uploadWithProgress = (url, formData, onProgress) =>
