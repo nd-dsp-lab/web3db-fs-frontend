@@ -708,26 +708,7 @@ export default function AppLayout({
       )}
 
       {selMenu && (
-        <SelectionMenu
-          selMenu={selMenu}
-          setSelMenu={setSelMenu}
-          theme={theme}
-          selectedCount={selectedCount}
-          view={view}
-          selectedFiles={selectedFiles}
-          selectedFolders={selectedFolders}
-          starred={starred}
-          starredFolders={starredFolders}
-          folderPathOf={folderPathOf}
-          toggleStarMany={toggleStarMany}
-          ownedSelection={ownedSelection}
-          openShareForSelection={openShareForSelection}
-          downloadSelection={downloadSelection}
-          clearSelection={clearSelection}
-          handleBulkRestore={handleBulkRestore}
-          handleBulkDelete={handleBulkDelete}
-          handleBulkTrash={handleBulkTrash}
-        />
+        <SelectionMenu selMenu={selMenu} setSelMenu={setSelMenu} />
       )}
 
       {band && (

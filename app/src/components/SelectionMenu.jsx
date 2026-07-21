@@ -1,13 +1,15 @@
 import { Star, UserPlus, Download, RotateCcw, Trash2 } from "lucide-react";
+import { useLayout } from "../contexts/LayoutContext";
 
 // Right-click menu shown when a multi-selection is right-clicked: bulk
 // star / share / download / trash (or restore + delete-forever in Trash).
-export default function SelectionMenu({
-  selMenu, setSelMenu, theme, selectedCount, view,
-  selectedFiles, selectedFolders, starred, starredFolders, folderPathOf,
-  toggleStarMany, ownedSelection, openShareForSelection, downloadSelection, clearSelection,
-  handleBulkRestore, handleBulkDelete, handleBulkTrash,
-}) {
+export default function SelectionMenu({ selMenu, setSelMenu }) {
+  const {
+    theme, selectedCount, view,
+    selectedFiles, selectedFolders, starred, starredFolders, folderPathOf,
+    toggleStarMany, ownedSelection, openShareForSelection, downloadSelection, clearSelection,
+    handleBulkRestore, handleBulkDelete, handleBulkTrash,
+  } = useLayout();
   const items = [
     ...(view !== "trash" ? [
       {
