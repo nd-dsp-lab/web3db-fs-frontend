@@ -5,6 +5,7 @@ import ToastStack from "./components/Toast";
 import { buildFileTree, getFolderContents, ensureSepolia, normalizeTxFields } from "./utils/helpers";
 import { TRASH_PREFIX, SEARCH_TYPE_EXTS } from "./lib/constants";
 import { makeApi } from "./lib/api";
+import { useToasts } from "./hooks/useToasts";
 
 // Trash is a hidden path prefix: "deleting" a file moves it under /.trash
 // (one on-chain move tx), restoring moves it back. No contract changes.
@@ -30,27 +31,7 @@ function App() {
   const [starred, setStarred] = useState(new Set());
 
   // --- TOASTS ---
-  const [toasts, setToasts] = useState([]);
-  const toastSeq = useRef(0);
-  const dismissToast = useCallback((id) => setToasts((t) => t.filter((x) => x.id !== id)), []);
-  const pushToast = useCallback((message, type = "info", opts = {}) => {
-    const id = ++toastSeq.current;
-    setToasts((t) => [...t, { id, message, type, action: opts.action, progress: opts.progress ?? null }]);
-    if (type !== "loading") setTimeout(() => dismissToast(id), opts.duration || 5000);
-    return id;
-  }, [dismissToast]);
-  const updateToast = useCallback((id, message, type, opts = {}) => {
-    setToasts((t) => t.map((x) => (x.id === id ? { ...x, message, type, action: opts.action, progress: opts.progress ?? null } : x)));
-    if (type !== "loading") setTimeout(() => dismissToast(id), opts.duration || 5000);
-  }, [dismissToast]);
-  const toast = {
-    success: (m, o) => pushToast(m, "success", o),
-    error: (m, o) => pushToast(m, "error", o),
-    info: (m, o) => pushToast(m, "info", o),
-    loading: (m, o) => pushToast(m, "loading", o),
-    update: updateToast,
-    dismiss: dismissToast,
-  };
+  const { toasts, dismissToast, pushToast, toast } = useToasts();
 
   // --- THEME ---
   // Follow the OS scheme until the user explicitly toggles, then persist.
