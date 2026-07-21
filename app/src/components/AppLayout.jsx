@@ -591,6 +591,7 @@ export default function AppLayout({
     displayItems, handleDeleteFolder, viewMode, setViewMode,
     setSortBy, setSortDir, detailsOpen, setDetailsOpen,
     searchType, setSearchType, searchScope, setSearchScope,
+    newMenuItems,
   };
 
   return (
@@ -682,7 +683,7 @@ export default function AppLayout({
       </main>
 
       {bgMenu && (
-        <BackgroundMenu bgMenu={bgMenu} setBgMenu={setBgMenu} newMenuItems={newMenuItems} theme={theme} />
+        <BackgroundMenu bgMenu={bgMenu} setBgMenu={setBgMenu} />
       )}
 
       {folderMenu && (

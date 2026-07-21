@@ -1,5 +1,8 @@
+import { useLayout } from "../contexts/LayoutContext";
+
 // Right-click menu on empty content-area background (New folder / uploads).
-export default function BackgroundMenu({ bgMenu, setBgMenu, newMenuItems, theme }) {
+export default function BackgroundMenu({ bgMenu, setBgMenu }) {
+  const { newMenuItems, theme } = useLayout();
   return (
     <div
       onMouseDown={(e) => e.stopPropagation()}
