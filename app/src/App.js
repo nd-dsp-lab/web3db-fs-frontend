@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
 import ToastStack from "./components/Toast";
+import ConfirmModal from "./components/ConfirmModal";
 import { buildFileTree } from "./utils/helpers";
 import { TRASH_PREFIX } from "./lib/constants";
 import { isTrashed, fullPathOf } from "./lib/paths";
@@ -11,6 +12,7 @@ import { useEmptyFolders } from "./hooks/useEmptyFolders";
 import { useStarred } from "./hooks/useStarred";
 import { useDisplayItems } from "./hooks/useDisplayItems";
 import { useFileActions } from "./hooks/useFileActions";
+import { useConfirmDialog } from "./hooks/useConfirm";
 
 function App() {
   // Replace with your actual backend URL
@@ -167,11 +169,14 @@ function App() {
     if (!searchQuery) { setSearchType(null); setSearchScope("all"); }
   }, [searchQuery]);
 
+  // Promise-based confirm dialog (themed replacement for window.confirm)
+  const { confirm, confirmDialog, onConfirm, onCancel } = useConfirmDialog();
+
   // --- FILE ACTIONS (share, move, rename, trash, restore, delete, upload) ---
   const {
     handleShare, handleUnshare, handleShareCids, handleUnshareCids, handleMove, handleTrash, handleRestore, handleDelete, handleBulkTrash, handleBulkMove, handleBulkRestore, handleBulkDelete, handleRestoreFolder, handleDeleteFolderForever, handleTrashFolder, handleRenameFolder, handleMoveFolder, handleCreateFolder, handleDeleteFolder, handleUpload, handleDropUpload,
   } = useFileActions({
-    account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery,
+    account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
   });
 
   // --- FOLDER SHARE ---
@@ -297,7 +302,16 @@ function App() {
       handleBulkTrash={handleBulkTrash}
       handleBulkRestore={handleBulkRestore}
       handleBulkDelete={handleBulkDelete}
+      confirm={confirm}
     />
+    {confirmDialog && (
+      <ConfirmModal
+        {...confirmDialog.opts}
+        darkMode={darkMode}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+    )}
     </>
   );
 }

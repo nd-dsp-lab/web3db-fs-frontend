@@ -6,7 +6,7 @@ import { TRASH_PREFIX } from "../lib/constants";
 // delete, bulk variants, upload) plus the sign/verify + error plumbing.
 // Depends on transaction primitives and data from App.
 export function useFileActions({
-  account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery,
+  account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
 }) {
   // --- TRANSACTION SIGNING ---
   // Backend endpoints only *prepare* transactions; the user must sign and
@@ -62,7 +62,7 @@ export function useFileActions({
           ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the file will appear when they first log in."
           : "";
         const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
-        if (!window.confirm(`Share with ${toAddress} (${short})?${note}`)) return;
+        if (!(await confirm({ title: "Share file", message: `Share with ${toAddress} (${short})?${note}`, confirmLabel: "Share" }))) return;
         toAddress = resolved.address;
       }
       tId = toast.loading("Preparing share…");
@@ -132,7 +132,7 @@ export function useFileActions({
           ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the files will appear when they first log in."
           : "";
         const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
-        if (!window.confirm(`Share with ${toAddress} (${short})?${note}`)) return;
+        if (!(await confirm({ title: "Share file", message: `Share with ${toAddress} (${short})?${note}`, confirmLabel: "Share" }))) return;
         toAddress = resolved.address;
       }
       tId = toast.loading(`Sharing ${cids.length} file(s)…`);
@@ -236,7 +236,7 @@ export function useFileActions({
   };
 
   const handleDelete = async (cid) => {
-    if (!window.confirm("Delete this file forever? This cannot be undone.")) return;
+    if (!(await confirm({ title: "Delete forever", message: "Delete this file forever? This cannot be undone.", confirmLabel: "Delete", danger: true }))) return;
     const tId = toast.loading("Deleting…");
     try {
       const response = await api.post("/delete", { user_address: account, cid });
@@ -385,7 +385,7 @@ export function useFileActions({
     const seen = new Set(items.map((f) => f.cid));
     const all = [...items, ...folderPaths.flatMap(trashedFilesUnder).filter((f) => !seen.has(f.cid))];
     if (!all.length) return;
-    if (!window.confirm(`Permanently delete ${all.length} file(s)? This cannot be undone.`)) return;
+    if (!(await confirm({ title: "Delete forever", message: `Permanently delete ${all.length} file(s)? This cannot be undone.`, confirmLabel: "Delete", danger: true }))) return;
     const tId = toast.loading(`Deleting ${all.length} file(s)…`);
     try {
       const response = await api.post("/delete-batch", { user_address: account, cids: all.map((f) => f.cid) });

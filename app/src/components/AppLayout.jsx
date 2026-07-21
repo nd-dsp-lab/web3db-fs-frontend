@@ -42,7 +42,7 @@ export default function AppLayout({
   folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
   view, setView, searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, storageQuota, toast,
-  handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove,
+  handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove, confirm,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState(null); // { type: "file", cid, name, fromPath } | { type: "folder", path }
@@ -592,7 +592,7 @@ export default function AppLayout({
     displayItems, handleDeleteFolder, viewMode, setViewMode,
     setSortBy, setSortDir, detailsOpen, setDetailsOpen,
     searchType, setSearchType, searchScope, setSearchScope,
-    newMenuItems,
+    newMenuItems, confirm,
     // FolderMenu
     fileTree, toggleStarFolder, folderCidsOf,
     folderOrganizeOpen, setFolderOrganizeOpen,
@@ -699,6 +699,7 @@ export default function AppLayout({
           file={shareFile}
           account={account}
           API_BASE_URL={API_BASE_URL}
+          confirm={confirm}
           onClose={() => setShareFile(null)}
           onShare={shareFile.folder
             ? (_cid, recipient) => handleShareCids(
@@ -733,6 +734,7 @@ export default function AppLayout({
           file={contextMenu.file}
           fileTree={fileTree}
           currentPath={currentPath}
+          confirm={confirm}
           onClose={() => setContextMenu(null)}
           onDownload={downloadFile}
           onDetails={openDetails}

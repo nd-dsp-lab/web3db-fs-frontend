@@ -5,7 +5,7 @@ import { useLayout } from "../contexts/LayoutContext";
 export default function Header() {
   const {
     theme, searchQuery, setSearchQuery, darkMode, toggleTheme,
-    account, connectWallet, disconnectWallet, user,
+    account, connectWallet, disconnectWallet, user, confirm,
   } = useLayout();
   // Account chip: social users see name/email, wallet users see the address
   const displayName = user?.google?.name || user?.email?.address ||
@@ -45,7 +45,7 @@ export default function Header() {
 
       {account ? (
         <div
-          onClick={() => { if (window.confirm("Log out of Web3FS?")) disconnectWallet(); }}
+          onClick={async () => { if (await confirm({ title: "Log out", message: "Log out of Web3FS?", confirmLabel: "Log out" })) disconnectWallet(); }}
           title={account}
           style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", padding: "4px 12px 4px 4px", borderRadius: "999px", backgroundColor: theme.searchBg }}
         >

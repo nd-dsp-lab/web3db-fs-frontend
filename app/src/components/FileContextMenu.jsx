@@ -35,6 +35,7 @@ export default function FileContextMenu({
   file,
   fileTree,
   currentPath,
+  confirm,
   onClose,
   onDownload,
   onShareOpen,
@@ -210,7 +211,7 @@ export default function FileContextMenu({
                     e.stopPropagation();
                     onClose();
                     const newPath = `/${file.filename}`;
-                    const ok = window.confirm(`Move "${file.filename}" to /?`);
+                    const ok = await confirm({ title: "Move file", message: `Move "${file.filename}" to /?`, confirmLabel: "Move" });
                     if (!ok) return;
                     await onMove(file.cid, newPath);
                   }}
@@ -233,7 +234,7 @@ export default function FileContextMenu({
                     e.stopPropagation();
                     onClose();
                     const newPath = `${path}/${file.filename}`;
-                    const ok = window.confirm(`Move "${file.filename}" to ${path}?`);
+                    const ok = await confirm({ title: "Move file", message: `Move "${file.filename}" to ${path}?`, confirmLabel: "Move" });
                     if (!ok) return;
                     await onMove(file.cid, newPath);
                   }}

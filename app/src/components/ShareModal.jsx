@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { X, UserPlus, Loader2, Trash2 } from "lucide-react";
 
 export default function ShareModal({
-  file, account, API_BASE_URL, onClose, onShare, onUnshare, darkMode,
+  file, account, API_BASE_URL, onClose, onShare, onUnshare, darkMode, confirm,
 }) {
   const [recipient, setRecipient] = useState("");
   const [sharedUsers, setSharedUsers] = useState([]);
@@ -62,7 +62,7 @@ export default function ShareModal({
   };
 
   const doRevoke = async (addr) => {
-    if (!window.confirm(`Remove access for ${addr}?`)) return;
+    if (!(await confirm({ title: "Remove access", message: `Remove access for ${addr}?`, confirmLabel: "Remove", danger: true }))) return;
     setBusy(addr);
     try {
       await onUnshare(file.cid, addr);

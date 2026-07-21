@@ -25,6 +25,7 @@ export default function Toolbar() {
     sortBy, setSortBy, sortDir, setSortDir, detailsOpen, setDetailsOpen,
     // search chips
     searchType, setSearchType, searchScope, setSearchScope,
+    confirm,
   } = useLayout();
   const ToolbarButton = ({ icon: Icon, title, onClick, color }) => (
     <button
@@ -124,8 +125,8 @@ export default function Toolbar() {
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
         {view === "trash" && (displayItems?.length || 0) > 0 && (
           <button
-            onClick={() => {
-              if (window.confirm(`Permanently delete all ${displayItems.length} file(s) in trash? This cannot be undone.`)) {
+            onClick={async () => {
+              if (await confirm({ title: "Empty trash", message: `Permanently delete all ${displayItems.length} file(s) in trash? This cannot be undone.`, confirmLabel: "Delete", danger: true })) {
                 handleDeleteFolder("/.trash");
               }
             }}

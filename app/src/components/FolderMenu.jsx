@@ -12,6 +12,7 @@ export default function FolderMenu({ folderMenu, setFolderMenu }) {
     folderOrganizeOpen, setFolderOrganizeOpen,
     downloadFolder, openDetails, setShareFile, promptRenameFolder,
     handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
+    confirm,
   } = useLayout();
   const Row = ({ Icon, label, color, onClick, right }) => (
     <div
@@ -56,9 +57,9 @@ export default function FolderMenu({ folderMenu, setFolderMenu }) {
         path !== parent
       ),
     ];
-    const doMove = (destPath) => {
+    const doMove = async (destPath) => {
       setFolderMenu(null);
-      if (!window.confirm(`Move "${folderMenu.name}" to ${destPath}?`)) return;
+      if (!(await confirm({ title: "Move folder", message: `Move "${folderMenu.name}" to ${destPath}?`, confirmLabel: "Move" }))) return;
       handleMoveFolder(folderMenu.path, destPath);
     };
 
