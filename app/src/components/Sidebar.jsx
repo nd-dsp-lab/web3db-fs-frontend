@@ -1,14 +1,16 @@
 import { Plus, HardDrive, Users, Clock, Star, Trash2, Cloud } from "lucide-react";
 import { formatBytes } from "../lib/fileTypes";
 import { STORAGE_QUOTA } from "../lib/constants";
+import { useLayout } from "../contexts/LayoutContext";
 
 // Left rail: brand, New menu, view navigation, and the storage indicator.
 // The "My Drive" nav item doubles as a drop target for moving items to root.
-export default function Sidebar({
-  theme, view, setView, setCurrentPath, setSearchQuery,
-  isNewMenuOpen, setIsNewMenuOpen, newMenuItems,
-  storageUsed, storageQuota, dropHover, onInternalDropTo,
-}) {
+export default function Sidebar() {
+  const {
+    theme, view, setView, setCurrentPath, setSearchQuery,
+    isNewMenuOpen, setIsNewMenuOpen, newMenuItems,
+    storageUsed, storageQuota, dropHover, onInternalDropTo,
+  } = useLayout();
   const NavItem = ({ id, icon: Icon, label, dropPath }) => (
     <div
       onClick={() => { setView(id); setCurrentPath("/"); setSearchQuery(""); }}

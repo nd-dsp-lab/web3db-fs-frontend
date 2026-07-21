@@ -597,26 +597,16 @@ export default function AppLayout({
     folderOrganizeOpen, setFolderOrganizeOpen,
     downloadFolder, openDetails, setShareFile, promptRenameFolder,
     handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
+    // Sidebar
+    setView, setSearchQuery, isNewMenuOpen, setIsNewMenuOpen,
+    storageUsed, storageQuota,
   };
 
   return (
     <LayoutContext.Provider value={layoutCtx}>
     <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: "'Google Sans', Roboto, Arial, sans-serif", color: theme.text }}>
       {/* SIDEBAR */}
-      <Sidebar
-        theme={theme}
-        view={view}
-        setView={setView}
-        setCurrentPath={setCurrentPath}
-        setSearchQuery={setSearchQuery}
-        isNewMenuOpen={isNewMenuOpen}
-        setIsNewMenuOpen={setIsNewMenuOpen}
-        newMenuItems={newMenuItems}
-        storageUsed={storageUsed}
-        storageQuota={storageQuota}
-        dropHover={dropHover}
-        onInternalDropTo={onInternalDropTo}
-      />
+      <Sidebar />
 
       {/* MAIN CONTENT AREA */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
