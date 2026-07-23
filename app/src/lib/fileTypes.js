@@ -18,7 +18,7 @@ export function fileVisual(filename = "") {
     return { Icon: FileText, color: "#d93025" };
   if (["doc", "docx", "txt", "md", "rtf"].includes(ext))
     return { Icon: FileText, color: "#1a73e8" };
-  if (["xls", "xlsx", "csv"].includes(ext))
+  if (["xls", "xlsx", "csv", "tsv"].includes(ext))
     return { Icon: FileText, color: "#188038" };
   return { Icon: FileIcon, color: "#5f6368" };
 }
@@ -27,7 +27,7 @@ export function fileVisual(filename = "") {
 // text-like files as a rendered page snippet.
 const THUMBNAIL_EXTENSIONS = [
   "png", "jpg", "jpeg", "gif", "webp", "bmp", "pdf",
-  "txt", "md", "csv", "json", "js", "jsx", "ts", "tsx", "py", "html", "css",
+  "txt", "md", "csv", "tsv", "json", "js", "jsx", "ts", "tsx", "py", "html", "css",
   "xml", "yaml", "yml", "toml", "ini", "log", "sh", "c", "cpp", "h", "java",
   "go", "rs", "rb", "sql", "env", "cfg", "conf",
 ];

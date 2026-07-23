@@ -226,7 +226,7 @@ export function useFileActions({
     if (!account) return;
     const tId = toast.loading("Restoring…");
     try {
-      const original = fullPathOf(file).slice(TRASH_PREFIX.length) || `/${file.filename}`;
+      const original = fullPathOf(file).slice(TRASH_PREFIX.length);
       await moveTx(file.cid, original, tId);
       toast.update(tId, `"${file.filename}" restored`, "success");
       retrieveFiles();
@@ -373,7 +373,7 @@ export function useFileActions({
     const seen = new Set(items.map((f) => f.cid));
     const all = [...items, ...folderPaths.flatMap(trashedFilesUnder).filter((f) => !seen.has(f.cid))];
     if (!all.length) return;
-    return runBatchMove(all, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length) || `/${f.filename}`);
+    return runBatchMove(all, "Restoring", (f) => fullPathOf(f).slice(TRASH_PREFIX.length));
   };
 
   const handleRestoreFolder = (folderPath) => handleBulkRestore([], [folderPath]);

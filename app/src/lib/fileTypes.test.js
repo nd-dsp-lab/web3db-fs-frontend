@@ -50,3 +50,10 @@ describe("formatBytes", () => {
     expect(formatBytes(1024 ** 3)).toBe("1.0 GB");
   });
 });
+
+test("tsv is treated exactly like csv", () => {
+  // Regression: tsv was missing from the spreadsheet icons and the thumbnail
+  // list, so .tsv files got a generic icon and no thumbnail.
+  expect(fileVisual("a.tsv").color).toBe(fileVisual("a.csv").color);
+  expect(hasThumbnailFor("a.tsv")).toBe(hasThumbnailFor("a.csv"));
+});

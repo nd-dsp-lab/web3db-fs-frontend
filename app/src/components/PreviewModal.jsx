@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { X, Download, FileWarning, Loader2 } from "lucide-react";
 
-const TEXT_EXTS = ["txt", "md", "csv", "log", "json", "js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "h", "java", "html", "css", "sh", "yml", "yaml", "toml", "xml", "env"];
+const TEXT_EXTS = ["txt", "md", "csv", "tsv", "log", "json", "js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "h", "java", "html", "css", "sh", "yml", "yaml", "toml", "xml", "env", "ini", "conf"];
 const TEXT_PREVIEW_LIMIT = 1024 * 1024; // 1 MB
 
 // The backend serves downloads as application/octet-stream, which makes the
@@ -21,7 +21,9 @@ function typedBlob(blob, filename) {
   return mime ? new Blob([blob], { type: mime }) : blob;
 }
 
-function previewKind(filename = "", mime = "") {
+// Exported for tests: the extension-to-renderer mapping is easy to get wrong
+// silently — a missing entry shows "No preview available" with no error.
+export function previewKind(filename = "", mime = "") {
   const ext = filename.split(".").pop().toLowerCase();
   if (mime.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext)) return "image";
   if (mime === "application/pdf" || ext === "pdf") return "pdf";
