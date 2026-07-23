@@ -368,3 +368,43 @@ describe("internal drag and upload trigger", () => {
     expect(props.handleBulkTrash).not.toHaveBeenCalled();
   });
 });
+
+// --- list view (FileList) and sorting ---
+
+describe("list view and sorting", () => {
+  const twoFiles = [
+    aFile({ cid: "c1", filename: "a.txt", name: "a.txt" }),
+    aFile({ cid: "c2", filename: "b.txt", name: "b.txt" }),
+  ];
+
+  test("switching to list view renders the table with folders and files", () => {
+    render(<AppLayout {...makeProps({ displayItems: [aFolder({ name: "Docs", shared_with: ["0xAAA"] }), ...twoFiles] })} />);
+    fireEvent.click(screen.getByTitle("list view"));
+
+    expect(screen.getByText("Sharing")).toBeInTheDocument();
+    expect(screen.getByText("CID")).toBeInTheDocument();
+    expect(screen.getByText("Docs")).toBeInTheDocument(); // folder row
+    expect(screen.getByText("a.txt")).toBeInTheDocument();
+    expect(screen.getByText("b.txt")).toBeInTheDocument();
+  });
+
+  test("the list select-all checkbox selects every row", () => {
+    const props = makeProps({ displayItems: twoFiles });
+    render(<AppLayout {...props} />);
+    fireEvent.click(screen.getByTitle("list view"));
+
+    // the first checkbox is the thead select-all
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByTitle("Move to trash"));
+
+    expect(props.handleBulkTrash.mock.calls[0][0].map((f) => f.cid).sort()).toEqual(["c1", "c2"]);
+  });
+
+  test("the sort-direction toggle flips ascending/descending", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    expect(screen.getByTitle("Ascending")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTitle("Ascending"));
+    expect(screen.getByTitle("Descending")).toBeInTheDocument();
+  });
+});
