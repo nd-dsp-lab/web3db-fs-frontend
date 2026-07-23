@@ -30,7 +30,13 @@ jobs:
       # them, see the CI: false note there.
       - run: npx eslint src --ext .js,.jsx --max-warnings=0
 
-      - run: npx react-scripts test --watchAll=false
+      # Thresholds live in package.json under jest.coverageThreshold. They are
+      # a ratchet pinned at the coverage on the day they were added, not a
+      # target — the gap is almost entirely untested components. Raise them as
+      # coverage rises; never lower them to make a build pass. Do not add a
+      # "//" comment key there: Jest reads it as a path glob and silently stops
+      # enforcing every threshold.
+      - run: npm run test:coverage
         env:
           CI: true
 
