@@ -61,6 +61,11 @@ const aFolder = (over = {}) => ({ type: "folder", name: "Docs", ...over });
 
 beforeEach(() => {
   jest.spyOn(console, "error").mockImplementation(() => {});
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true, blob: async () => new Blob(["x"]), json: async () => ({ shared_with: [] }),
+  });
+  global.URL.createObjectURL = jest.fn(() => "blob:x");
+  global.URL.revokeObjectURL = jest.fn();
 });
 afterEach(() => jest.restoreAllMocks());
 
@@ -162,4 +167,204 @@ test("clicking a folder tile navigates into it", () => {
 
   expect(props.setView).toHaveBeenCalledWith("my-drive");
   expect(props.setCurrentPath).toHaveBeenCalledWith("/Docs");
+});
+
+test("search matches are highlighted in tile names", () => {
+  render(<AppLayout {...makeProps({ displayItems: [aFile({ filename: "report.txt", name: "report.txt" })], searchQuery: "rep" })} />);
+  expect(document.querySelectorAll("mark").length).toBeGreaterThan(0);
+});
+
+test("F2 rename dialog moves the file to the new name on submit", () => {
+  const props = makeProps({ displayItems: [aFile()] });
+  render(<AppLayout {...props} />);
+  fireEvent.click(screen.getAllByRole("checkbox")[0]);
+  fireEvent.keyDown(document, { key: "F2" });
+
+  const input = screen.getByDisplayValue("report.txt");
+  fireEvent.change(input, { target: { value: "renamed.txt" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+
+  expect(props.handleMove).toHaveBeenCalledWith("c1", "/renamed.txt");
+});
+
+// --- drag-and-drop upload ---
+
+describe("drag-and-drop upload", () => {
+  test("dragging files in shows the drop overlay", () => {
+    render(<AppLayout {...makeProps({ displayItems: [] })} />);
+    const zone = screen.getByText(/This folder is empty/i);
+    fireEvent.dragEnter(zone, { dataTransfer: { types: ["Files"] } });
+
+    expect(screen.getByText(/Drop files to upload/i)).toBeInTheDocument();
+    fireEvent.dragLeave(zone, { dataTransfer: { types: ["Files"] } });
+  });
+
+  test("dropping plain files hands them to the upload handler", () => {
+    const props = makeProps({ displayItems: [] });
+    render(<AppLayout {...props} />);
+    const zone = screen.getByText(/This folder is empty/i);
+    const dataTransfer = { types: ["Files"], items: [], files: [new File(["x"], "a.pdf")] };
+
+    fireEvent.drop(zone, { dataTransfer });
+
+    expect(props.handleDropUpload).toHaveBeenCalled();
+    expect(props.handleDropUpload.mock.calls[0][0][0].rel).toBe("a.pdf");
+  });
+
+  test("dropping outside My Drive is refused with a hint", () => {
+    const props = makeProps({ displayItems: [], view: "shared" });
+    render(<AppLayout {...props} />);
+    const zone = screen.getByText(/Nothing shared with you yet/i);
+
+    fireEvent.drop(zone, { dataTransfer: { types: ["Files"], items: [], files: [new File(["x"], "a.pdf")] } });
+
+    expect(props.toast.info).toHaveBeenCalledWith(expect.stringMatching(/My Drive/i));
+    expect(props.handleDropUpload).not.toHaveBeenCalled();
+  });
+});
+
+// --- downloads (fetch-backed) ---
+
+describe("downloads", () => {
+  test("downloading a folder hits the zip endpoint", () => {
+    render(<AppLayout {...makeProps({ displayItems: [aFolder()] })} />);
+    fireEvent.contextMenu(document.querySelector('[data-cid="folder:/Docs"]'));
+    // FolderMenu offers Rename/Download/Share
+    expect(screen.getByText("Rename")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Download"));
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/download-folder?path="), expect.anything());
+  });
+});
+
+// --- multi-select toolbar ---
+
+describe("multi-select toolbar", () => {
+  const twoFiles = [
+    aFile({ cid: "c1", filename: "a.txt", name: "a.txt" }),
+    aFile({ cid: "c2", filename: "b.txt", name: "b.txt" }),
+  ];
+  // Ctrl-click the tiles directly — deterministic, unlike checkbox indices
+  // once the selection toolbar adds its own controls.
+  const selectBoth = () => {
+    fireEvent.click(document.querySelector('[data-cid="c1"]'), { ctrlKey: true });
+    fireEvent.click(document.querySelector('[data-cid="c2"]'), { ctrlKey: true });
+  };
+
+  test("bulk trash acts on the whole selection", () => {
+    const props = makeProps({ displayItems: twoFiles });
+    render(<AppLayout {...props} />);
+    selectBoth();
+    fireEvent.click(screen.getByTitle("Move to trash"));
+
+    expect(props.handleBulkTrash).toHaveBeenCalled();
+    expect(props.handleBulkTrash.mock.calls[0][0].map((f) => f.cid).sort()).toEqual(["c1", "c2"]);
+  });
+
+  test("bulk share opens the share modal for the selection", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    selectBoth();
+    fireEvent.click(screen.getByTitle("Share"));
+
+    expect(screen.getByText(/People with access/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Email or Ethereum address/i)).toBeInTheDocument();
+  });
+
+  test("bulk download fetches the selected files", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    selectBoth();
+    fireEvent.click(screen.getByTitle("Download"));
+
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  test("details panel shows the multi-selection summary", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    selectBoth();
+    fireEvent.click(screen.getByTitle("File details"));
+
+    expect(screen.getByText(/2 items selected/i)).toBeInTheDocument();
+  });
+
+  test("right-clicking within a selection opens the selection menu", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    selectBoth();
+    fireEvent.contextMenu(document.querySelector('[data-cid="c1"]'));
+
+    // selection menu offers bulk actions rather than the single-file menu
+    expect(screen.getByText("Move to trash")).toBeInTheDocument();
+    expect(screen.getByText("Share")).toBeInTheDocument();
+  });
+});
+
+// --- internal drag-move and the New-menu upload trigger ---
+
+describe("internal drag and upload trigger", () => {
+  test("dragging a file onto a folder moves it there", () => {
+    const props = makeProps({
+      displayItems: [aFile({ cid: "c1", filename: "a.txt", name: "a.txt", folder_path: "/" }), aFolder({ name: "Docs" })],
+    });
+    render(<AppLayout {...props} />);
+
+    fireEvent.dragStart(document.querySelector('[data-cid="c1"]'));
+    fireEvent.drop(document.querySelector('[data-cid="folder:/Docs"]'));
+
+    expect(props.handleMove).toHaveBeenCalledWith("c1", "/Docs/a.txt");
+  });
+
+  test("choosing File upload from the New menu arms a single-file upload", () => {
+    const props = makeProps();
+    render(<AppLayout {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /^New$/ }));
+    fireEvent.click(screen.getByText("File upload"));
+
+    expect(props.setUploadMode).toHaveBeenCalledWith("single");
+  });
+
+  test("the star shortcut stars the current selection", () => {
+    const props = makeProps({ displayItems: [aFile()] });
+    render(<AppLayout {...props} />);
+    fireEvent.click(document.querySelector('[data-cid="c1"]'), { ctrlKey: true });
+    fireEvent.keyDown(document, { key: "s", code: "KeyS", metaKey: true, altKey: true });
+
+    expect(props.toggleStarMany).toHaveBeenCalled();
+  });
+
+  test("creating a folder from the New menu", () => {
+    const props = makeProps();
+    render(<AppLayout {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /^New$/ }));
+    fireEvent.click(screen.getByText("New folder"));
+
+    // the modal input is the textbox that isn't the header search
+    const modalInput = screen.getAllByRole("textbox").find((i) => i.getAttribute("placeholder") !== "Search in Web3FS");
+    fireEvent.change(modalInput, { target: { value: "Reports" } });
+    fireEvent.click(screen.getByText("Create"));
+
+    expect(props.handleCreateFolder).toHaveBeenCalledWith("Reports");
+  });
+
+  test("F2 renames a selected folder on submit", () => {
+    const props = makeProps({ displayItems: [aFolder({ name: "Docs" })] });
+    render(<AppLayout {...props} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]); // select the folder
+    fireEvent.keyDown(document, { key: "F2" });
+
+    const input = screen.getByDisplayValue("Docs");
+    fireEvent.change(input, { target: { value: "Papers" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(props.handleRenameFolder).toHaveBeenCalledWith("/Docs", "Papers");
+  });
+
+  test("Delete in the Trash view deletes forever", () => {
+    const props = makeProps({ displayItems: [aFile()], view: "trash" });
+    render(<AppLayout {...props} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.keyDown(document, { key: "Delete" });
+
+    expect(props.handleBulkDelete).toHaveBeenCalled();
+    expect(props.handleBulkTrash).not.toHaveBeenCalled();
+  });
 });
