@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+
+      # Lint our own source strictly. This is the gate that catches the
+      # warnings CRA's dev server only shows as a red overlay in the browser
+      # (unused imports and the like) — the build step below cannot enforce
+      # them, see the CI: false note there.
+      - run: npx eslint src --ext .js,.jsx --max-warnings=0
+
+      - run: npx react-scripts test --watchAll=false
+        env:
+          CI: true
+
+      # CI: false because Actions exports CI=true, which makes CRA treat every
+      # warning as a fatal error — including "module not found" for optional
+      # peer deps that @privy-io/react-auth references but does not ship
+      # (@stripe/crypto, @farcaster/mini-app-solana). Those are third-party and
+      # not ours to fix; our own source is already gated by the eslint step.
+      - run: npx react-scripts build
+        env:
+          CI: false

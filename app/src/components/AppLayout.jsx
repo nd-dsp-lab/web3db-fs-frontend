@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Folder, Users, MoreVertical, Upload, FolderUp, FolderPlus, Download,
+  Folder, Users, MoreVertical, Upload, FolderUp, FolderPlus,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
