@@ -17,6 +17,24 @@ npm ci        # installs from the lockfile that ships on this branch
 If `npm ci` complains that the lockfile is out of sync, run `npm install` once
 and commit the updated `package-lock.json`.
 
+## Verification already done (on this branch, via bun)
+
+`npm install` reify hangs in the authoring sandbox, so the branch was installed
+and exercised with **bun** instead. Confirmed green there:
+
+- `vitest run` — **223 tests pass, 19 files** (JSX test files renamed to
+  `*.test.jsx`; `App.test.jsx` mocks use `vi.hoisted`).
+- `vite build` — succeeds, emits `dist/` (auto code-split).
+- `eslint src` — 0 warnings (react-app config + `vi` global).
+- `vite` dev server — boots, app renders, no console errors.
+
+**Known local-only issue:** `vitest run --coverage` crashes in this sandbox with
+`Cannot find module 'semver/functions/gte'`. Cause: bun hoisted semver@6 while
+istanbul's `make-dir` needs semver@7; bun's dedup didn't nest a v7. This is a
+**bun install-layout quirk, not a config problem** — `npm ci` (CI/Amplify)
+nests semver by version and coverage works. Verify coverage + the ratchet on a
+machine after a clean `npm ci`.
+
 ## 2. Verify everything is green
 
 ```bash
