@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { X, Download, FileWarning, Loader2 } from "lucide-react";
+import { DOWNLOAD } from "../utils/permissions";
 
 const TEXT_EXTS = ["txt", "md", "csv", "tsv", "log", "json", "js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "h", "java", "html", "css", "sh", "yml", "yaml", "toml", "xml", "env", "ini", "conf"];
 const TEXT_PREVIEW_LIMIT = 1024 * 1024; // 1 MB
@@ -143,7 +144,7 @@ export default function PreviewModal({ file, account, authToken, API_BASE_URL, o
       >
         <button onClick={onClose} title="Close" style={headerBtn}><X size={20} /></button>
         <span style={{ flex: 1, fontSize: "15px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.filename}</span>
-        {(file.permissions & 4) !== 0 && (
+        {(file.permissions & DOWNLOAD) !== 0 && (
           <button onClick={() => onDownload(file)} title="Download" style={headerBtn}><Download size={19} /></button>
         )}
       </header>

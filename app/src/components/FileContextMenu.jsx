@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info } from "lucide-react";
+import { DOWNLOAD } from "../utils/permissions";
 
 // Shortcut hints shown in menus — the keys act on the current selection
 const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
@@ -118,7 +119,7 @@ export default function FileContextMenu({
           icon={<RotateCcw size={15} />} label="Restore"
           onClick={() => { onClose(); onRestore(file); }}
         />
-        {(permissions & 4) !== 0 && (
+        {(permissions & DOWNLOAD) !== 0 && (
           <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
         )}
         <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); onDetails(file); }} />
@@ -135,7 +136,7 @@ export default function FileContextMenu({
     <div ref={menuRef} style={menuStyle}>
 
       {/* DOWNLOAD */}
-      {(permissions & 4) !== 0 && (
+      {(permissions & DOWNLOAD) !== 0 && (
         <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
       )}
 
