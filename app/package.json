@@ -2,47 +2,34 @@
   "name": "app",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@privy-io/react-auth": "^3.33.1",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/jest-dom": "^6.8.0",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
     "lucide-react": "^1.25.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1",
-    "react-scripts": "5.0.1"
+    "react-dom": "^19.1.1"
   },
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "test:coverage": "react-scripts test --watchAll=false --coverage",
-    "eject": "react-scripts eject"
-  },
-  "jest": {
-    "collectCoverageFrom": [
-      "src/**/*.{js,jsx}",
-      "!src/index.js",
-      "!src/**/*.test.{js,jsx}"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "statements": 77,
-        "branches": 66,
-        "functions": 68,
-        "lines": 82
-      }
-    }
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext .js,.jsx --max-warnings=0",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest"
-    ]
+    ],
+    "globals": {
+      "vi": "readonly",
+      "vitest": "readonly"
+    }
   },
   "browserslist": {
     "production": [
@@ -57,6 +44,17 @@
     ]
   },
   "devDependencies": {
-    "prettier": "3.6.2"
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^8.57.1",
+    "eslint-config-react-app": "^7.0.1",
+    "jsdom": "^25.0.1",
+    "prettier": "3.6.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
   }
 }

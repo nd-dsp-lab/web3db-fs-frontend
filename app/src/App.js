@@ -16,7 +16,7 @@ import { useConfirmDialog } from "./hooks/useConfirm";
 
 function App() {
   // Replace with your actual backend URL
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
   const api = useMemo(() => makeApi(API_BASE_URL), [API_BASE_URL]);
 
   // --- STATE MANAGEMENT ---

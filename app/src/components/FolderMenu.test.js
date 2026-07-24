@@ -11,14 +11,14 @@ const THEME = { card: "#fff", border: "#ccc", hoverRow: "#eee", text: "#000", su
 function renderMenu(folderMenu, over = {}) {
   const ctx = {
     theme: THEME, fileTree: null,
-    starredFolders: new Set(), toggleStarFolder: jest.fn(), folderCidsOf: () => ["c1", "c2"],
-    folderOrganizeOpen: false, setFolderOrganizeOpen: jest.fn(),
-    downloadFolder: jest.fn(), openDetails: jest.fn(), setShareFile: jest.fn(), promptRenameFolder: jest.fn(),
-    handleMoveFolder: jest.fn(), handleTrashFolder: jest.fn(), handleRestoreFolder: jest.fn(), handleDeleteFolderForever: jest.fn(),
-    confirm: jest.fn().mockResolvedValue(true),
+    starredFolders: new Set(), toggleStarFolder: vi.fn(), folderCidsOf: () => ["c1", "c2"],
+    folderOrganizeOpen: false, setFolderOrganizeOpen: vi.fn(),
+    downloadFolder: vi.fn(), openDetails: vi.fn(), setShareFile: vi.fn(), promptRenameFolder: vi.fn(),
+    handleMoveFolder: vi.fn(), handleTrashFolder: vi.fn(), handleRestoreFolder: vi.fn(), handleDeleteFolderForever: vi.fn(),
+    confirm: vi.fn().mockResolvedValue(true),
     ...over,
   };
-  const setFolderMenu = jest.fn();
+  const setFolderMenu = vi.fn();
   render(
     <LayoutContext.Provider value={ctx}>
       <FolderMenu folderMenu={{ x: 0, y: 0, ...folderMenu }} setFolderMenu={setFolderMenu} />

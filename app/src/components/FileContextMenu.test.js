@@ -11,11 +11,11 @@ function setup(over = {}) {
     x: 0, y: 0,
     file: { cid: "c1", filename: "a.pdf", is_owner: true, permissions: 0xFF },
     fileTree: null, currentPath: "/",
-    confirm: jest.fn().mockResolvedValue(true),
-    onClose: jest.fn(), onDownload: jest.fn(), onDetails: jest.fn(),
-    onShareOpen: jest.fn(), onRenameOpen: jest.fn(), onDelete: jest.fn(),
-    onMove: jest.fn(), onTrash: jest.fn(), onRestore: jest.fn(),
-    inTrash: false, isStarred: false, onToggleStar: jest.fn(),
+    confirm: vi.fn().mockResolvedValue(true),
+    onClose: vi.fn(), onDownload: vi.fn(), onDetails: vi.fn(),
+    onShareOpen: vi.fn(), onRenameOpen: vi.fn(), onDelete: vi.fn(),
+    onMove: vi.fn(), onTrash: vi.fn(), onRestore: vi.fn(),
+    inTrash: false, isStarred: false, onToggleStar: vi.fn(),
     ...over,
   };
   render(<FileContextMenu {...props} />);

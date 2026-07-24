@@ -114,10 +114,10 @@ const types = (calls) => calls.toasts.map(([t]) => t);
 const said = (calls, text) => messages(calls).some((m) => String(m).includes(text));
 
 beforeEach(() => {
-  jest.spyOn(console, "error").mockImplementation(() => {});
-  jest.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 // --- sign / verify: the spine every write action goes through ---
 

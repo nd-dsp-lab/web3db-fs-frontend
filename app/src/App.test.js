@@ -8,15 +8,22 @@ import App from "./App";
 // AppLayout to a prop-capturing sink, so the assertions target App's own
 // logic rather than the whole component tree.
 
-const mockPrivy = { value: {} };
-const mockWallets = { value: [] };
-jest.mock("@privy-io/react-auth", () => ({
+// Vitest hoists vi.mock() above these declarations, so the holders the mock
+// factories reference must be created with vi.hoisted (Vitest's equivalent of
+// Jest's mock-prefixed-variable exemption).
+const { mockPrivy, mockWallets, mockApi, mockCapture } = vi.hoisted(() => ({
+  mockPrivy: { value: {} },
+  mockWallets: { value: [] },
+  mockApi: { get: vi.fn(), post: vi.fn() },
+  mockCapture: { props: null },
+}));
+
+vi.mock("@privy-io/react-auth", () => ({
   usePrivy: () => mockPrivy.value,
   useWallets: () => ({ wallets: mockWallets.value }),
 }));
 
-const mockApi = { get: jest.fn(), post: jest.fn() };
-jest.mock("./lib/api", () => ({
+vi.mock("./lib/api", () => ({
   makeApi: () => ({
     get: (...a) => mockApi.get(...a),
     post: (...a) => mockApi.post(...a),
@@ -24,9 +31,7 @@ jest.mock("./lib/api", () => ({
   }),
 }));
 
-const mockCapture = { props: null };
-jest.mock("./components/AppLayout", () => ({
-  __esModule: true,
+vi.mock("./components/AppLayout", () => ({
   default: (props) => { mockCapture.props = props; return null; },
 }));
 
@@ -60,18 +65,18 @@ function stubApi() {
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  vi.clearAllMocks();
   mockCapture.props = null;
   localStorage.clear();
   window.matchMedia = (q) => ({
     matches: false, media: q,
     addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {},
   });
-  jest.spyOn(console, "error").mockImplementation(() => {});
-  jest.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(console, "log").mockImplementation(() => {});
   stubApi();
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 function renderApp() {
   // render auto-wraps in act; async mount effects (auth token, fund, file /
@@ -81,7 +86,7 @@ function renderApp() {
 
 describe("authentication → account", () => {
   test("signed-out: no account and no file fetch", async () => {
-    mockPrivy.value = { ready: true, authenticated: false, login: jest.fn(), logout: jest.fn(), user: null };
+    mockPrivy.value = { ready: true, authenticated: false, login: vi.fn(), logout: vi.fn(), user: null };
     mockWallets.value = [];
     await renderApp();
 
@@ -90,7 +95,7 @@ describe("authentication → account", () => {
   });
 
   test("social login uses the Privy embedded wallet as the account", async () => {
-    mockPrivy.value = { ready: true, authenticated: true, login: jest.fn(), logout: jest.fn(), user: { google: { name: "Ada" } } };
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
     // useWallets can list a stale MetaMask first — the embedded one must win
     mockWallets.value = [
       { address: "0xEXTERNAL", walletClientType: "metamask", getEthereumProvider: async () => ({ request: async () => null }) },
@@ -105,7 +110,7 @@ describe("authentication → account", () => {
 
 describe("storage math", () => {
   test("storageUsed counts only owned files; quota adds disk_free", async () => {
-    mockPrivy.value = { ready: true, authenticated: true, login: jest.fn(), logout: jest.fn(), user: { google: { name: "Ada" } } };
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
     mockWallets.value = [embeddedWallet()];
     await renderApp();
 
@@ -116,7 +121,7 @@ describe("storage math", () => {
 
 describe("folder helpers derived from the file list", () => {
   async function renderAuthed() {
-    mockPrivy.value = { ready: true, authenticated: true, login: jest.fn(), logout: jest.fn(), user: { google: { name: "Ada" } } };
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
     mockWallets.value = [embeddedWallet()];
     renderApp();
     // wait until the file list has actually loaded (folder helpers read it)
@@ -141,8 +146,8 @@ describe("folder helpers derived from the file list", () => {
 
 describe("session lifecycle", () => {
   test("disconnect logs out and clears the session", async () => {
-    const logout = jest.fn().mockResolvedValue();
-    mockPrivy.value = { ready: true, authenticated: true, login: jest.fn(), logout, user: { google: { name: "Ada" } } };
+    const logout = vi.fn().mockResolvedValue();
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout, user: { google: { name: "Ada" } } };
     mockWallets.value = [embeddedWallet()];
     await renderApp();
     await waitFor(() => expect(mockCapture.props.account).toBe(ADDR));
@@ -156,7 +161,7 @@ describe("session lifecycle", () => {
       `authToken:${ADDR.toLowerCase()}`,
       JSON.stringify({ token: "cached-tok", expires: 9_999_999_999 })
     );
-    mockPrivy.value = { ready: true, authenticated: true, login: jest.fn(), logout: jest.fn(), user: { google: { name: "Ada" } } };
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
     mockWallets.value = [embeddedWallet()];
     await renderApp();
 
@@ -168,7 +173,7 @@ describe("session lifecycle", () => {
 
 describe("theme", () => {
   test("toggleTheme flips dark mode and persists the choice", async () => {
-    mockPrivy.value = { ready: true, authenticated: false, login: jest.fn(), logout: jest.fn(), user: null };
+    mockPrivy.value = { ready: true, authenticated: false, login: vi.fn(), logout: vi.fn(), user: null };
     mockWallets.value = [];
     await renderApp();
 
