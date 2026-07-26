@@ -101,7 +101,10 @@ function installFakeXHR({ status = 200, body = {} }, calls) {
     }
     open(_method, url) { calls.api.push({ path: "XHR", body: url }); }
     setRequestHeader() {}
-    send() {
+    send(formData) {
+      // The destination folder rides in the body, not the URL, so it has to be
+      // captured here or a file uploaded to the wrong folder looks identical.
+      calls.uploadBody = formData;
       this.upload.onprogress?.({ lengthComputable: true, loaded: 5, total: 10 });
       this.onload();
     }
@@ -526,6 +529,8 @@ describe("upload", () => {
 
     expect(posted(calls, "XHR")[0]).toContain("/upload");
     expect(posted(calls, "XHR")[0]).not.toContain("/upload-folder");
+    expect(calls.uploadBody.get("folder_path")).toBe("/docs");
+    expect(calls.uploadBody.get("user_address")).toBe(ACCOUNT);
     expect(target.value).toBe(null);  // input is cleared once prepared
   });
 
@@ -540,6 +545,8 @@ describe("upload", () => {
     await actions.handleUpload({ target: { files: [f], value: "" } });
 
     expect(posted(calls, "XHR")[0]).toContain("/upload-folder");
+    // webkitRelativePath is what carries the dropped folder's structure
+    expect(calls.uploadBody.get("paths")).toBe("/Docs/a.pdf");
   });
 });
 
