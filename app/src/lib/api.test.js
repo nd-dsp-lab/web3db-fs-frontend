@@ -85,13 +85,17 @@ describe("sharedUsers", () => {
   // cids it holds — a POST only because that list won't fit in a query string.
   test("a folder posts its cid list instead", async () => {
     withResponse({ shared_with: ["0xA"] });
-    await makeApi(BASE).sharedUsers({ cids: ["c1", "c2"], account: "0xME" }, "tok");
+    await makeApi(BASE).sharedUsers({ cids: ["c1", "c2"] }, "tok");
 
     const [url, opts] = global.fetch.mock.calls[0];
     expect(url).toBe(`${BASE}/shared-users-batch`);
     expect(opts.method).toBe("POST");
     expect(opts.headers["x-auth-token"]).toBe("tok");
-    expect(JSON.parse(opts.body).cids).toEqual(["c1", "c2"]);
+    const body = JSON.parse(opts.body);
+    expect(body.cids).toEqual(["c1", "c2"]);
+    // Identity comes from the token; sending an address would invite a
+    // backend that trusts it.
+    expect(body).not.toHaveProperty("user_address");
   });
 
   // An unshared file comes back without the key rather than with an empty

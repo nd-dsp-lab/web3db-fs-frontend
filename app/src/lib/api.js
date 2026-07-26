@@ -24,12 +24,12 @@ export function makeApi(baseUrl) {
     // that list doesn't fit in a query string, not because it changes
     // anything. Both callers want the same thing: a plain list of addresses.
     //
-    // The backend identifies the requester from the token and ignores
-    // user_address, but its request model still requires the field.
-    sharedUsers: async ({ cid, cids, account }, authToken) => {
+    // The backend identifies the requester from the token, so neither form
+    // sends an address — a claimed one would be ignored anyway.
+    sharedUsers: async ({ cid, cids }, authToken) => {
       const auth = { "x-auth-token": authToken };
       const res = cids
-        ? await post("/shared-users-batch", { cids, user_address: account }, auth)
+        ? await post("/shared-users-batch", { cids }, auth)
         : await get(`/shared-users?cid=${encodeURIComponent(cid)}`, auth);
       const data = await res.json();
       return data.shared_with || [];
