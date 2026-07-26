@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, act, waitFor } from "@testing-library/react";
+import { render, act, waitFor, screen } from "@testing-library/react";
 import App from "./App";
 
 // App is the orchestrator: it wires Privy auth, the API, theme, and every
@@ -198,5 +198,88 @@ describe("theme", () => {
 
     expect(mockCapture.props.darkMode).toBe(true);
     expect(localStorage.getItem("themePref")).toBe("dark");
+  });
+});
+
+// --- concurrent refreshes and auth retries -------------------------------
+// retrieveFiles depends on emptyFolders, so creating a folder (a purely local
+// operation) triggers a second refresh. That is the real path by which two
+// file fetches end up in flight at once.
+
+describe("retrieveFiles ordering", () => {
+  test("a slow earlier refresh cannot overwrite a newer file list", async () => {
+    const older = [{ cid: "old", filename: "old.pdf", folder_path: "/", is_owner: true, size: 1 }];
+    const newer = [{ cid: "new", filename: "new.pdf", folder_path: "/", is_owner: true, size: 2 }];
+    let releaseFirst;
+    let call = 0;
+    mockApi.get.mockImplementation((path) => {
+      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000 }) });
+      if (!path.startsWith("/?user_address")) return Promise.resolve({ json: async () => ({}) });
+      call += 1;
+      // Mount fires more than one refresh on its own (loading emptyFolders
+      // changes retrieveFiles), so defer whichever lands first and let every
+      // later one resolve immediately with the newer list.
+      if (call === 1) return new Promise((res) => { releaseFirst = () => res({ json: async () => ({ user_files: older }) }); });
+      return Promise.resolve({ json: async () => ({ user_files: newer }) });
+    });
+
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [embeddedWallet()];
+    renderApp();
+    await waitFor(() => expect(mockCapture.props.account).toBe(ADDR));
+
+    // a later refresh resolves right away with the newer list
+    await act(async () => { mockCapture.props.handleCreateFolder("docs"); });
+    await waitFor(() => expect(mockCapture.props.displayItems.some((f) => f.cid === "new")).toBe(true));
+
+    // now the stale first response finally lands — it must be discarded
+    await act(async () => { releaseFirst(); });
+
+    const cids = mockCapture.props.displayItems.filter((i) => i.type !== "folder").map((f) => f.cid);
+    expect(cids).toContain("new");
+    expect(cids).not.toContain("old");
+  });
+
+  test("a failed refresh tells the user instead of failing silently", async () => {
+    mockApi.get.mockImplementation((path) => {
+      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000 }) });
+      if (path.startsWith("/?user_address")) return Promise.reject(new Error("network down"));
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [embeddedWallet()];
+    renderApp();
+
+    expect(await screen.findByText(/Couldn't load your files/i)).toBeInTheDocument();
+  });
+});
+
+describe("download auth token", () => {
+  test("a transient failure is retried rather than disabling downloads all session", async () => {
+    // The address is latched in authRequested to keep it to one prompt per
+    // session; if a failure left it latched, downloads stayed dead until a
+    // full page reload.
+    // Path-aware: /fund-wallet also posts on mount and would otherwise eat
+    // the one-shot rejection meant for /auth/token.
+    let authAttempts = 0;
+    mockApi.post.mockImplementation((path) => {
+      if (path !== "/auth/token") return Promise.resolve({ ok: true, json: async () => ({}) });
+      authAttempts += 1;
+      if (authAttempts === 1) return Promise.reject(new Error("backend hiccup"));
+      return Promise.resolve({ ok: true, json: async () => ({ token: "tok2", expires: 9_999_999_999 }) });
+    });
+
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [embeddedWallet()];
+    const { rerender } = render(<App />);
+
+    expect(await screen.findByText(/Sign-in verification failed/i)).toBeInTheDocument();
+    expect(mockCapture.props.authToken).toBeNull();
+
+    // a new wallet object re-runs the effect for the same account
+    mockWallets.value = [embeddedWallet()];
+    rerender(<App />);
+
+    await waitFor(() => expect(mockCapture.props.authToken).toBe("tok2"));
   });
 });

@@ -111,6 +111,11 @@ function App() {
     } catch { /* fall through to re-sign */ }
     if (authRequested.current.has(account)) return; // one prompt per address per session
     authRequested.current.add(account);
+    // The signature prompt can outlive this account: logging out and back in
+    // as someone else while it is pending would otherwise install the first
+    // address's token for the second, and every download would 403.
+    const signingFor = account;
+    let superseded = false;
     (async () => {
       try {
         const timestamp = Math.floor(Date.now() / 1000);
@@ -122,16 +127,20 @@ function App() {
           method: "personal_sign",
           params: [hexMessage, account],
         });
-        const res = await api.post("/auth/token", { address: account, timestamp, signature });
+        const res = await api.post("/auth/token", { address: signingFor, timestamp, signature });
         const data = await res.json();
         if (!res.ok || !data.token) throw new Error(data.error || "Token request failed");
         localStorage.setItem(key, JSON.stringify(data));
-        setAuthToken(data.token);
+        if (!superseded) setAuthToken(data.token);
       } catch (err) {
+        // Retry on the next attempt: without this a single backend hiccup
+        // disables downloads until a full page reload.
+        authRequested.current.delete(signingFor);
         console.error("Download auth failed:", err);
-        toast.error("Sign-in verification failed — downloads and previews disabled");
+        if (!superseded) toast.error("Sign-in verification failed — downloads and previews disabled");
       }
     })();
+    return () => { superseded = true; };
   }, [account, wallet, api, getProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- GAS DRIP for fresh embedded wallets ---
@@ -156,12 +165,18 @@ function App() {
   }, [account, wallet, api]);
 
   // --- DATA FETCHING ---
+  // Several actions refresh concurrently (an upload finishing while a folder
+  // is created, say). Responses can land out of order, so a sequence number
+  // makes sure a slow earlier request cannot overwrite a newer file list.
+  const fetchSeq = useRef(0);
   const retrieveFiles = useCallback(async () => {
     if (!account) return;
+    const seq = ++fetchSeq.current;
     try {
       const response = await api.get(`/?user_address=${account}`);
       const data = await response.json();
       const filesList = data.user_files || [];
+      if (seq !== fetchSeq.current) return; // superseded by a later refresh
 
       setFiles(filesList);
       // The tree only holds files the user owns; files shared to them are
@@ -170,8 +185,11 @@ function App() {
       setFileTree(buildFileTree(filesList.filter((f) => f.is_owner && !isTrashed(f)), emptyFolders));
     } catch (err) {
       console.error("Error retrieving files:", err);
+      // Otherwise an outage just leaves the last-good list on screen with no
+      // sign anything is wrong.
+      if (seq === fetchSeq.current) toast.error("Couldn't load your files — check your connection");
     }
-  }, [account, emptyFolders, api]);
+  }, [account, emptyFolders, api]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (account) retrieveFiles();
