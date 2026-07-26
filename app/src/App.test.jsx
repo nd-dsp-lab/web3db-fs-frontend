@@ -156,6 +156,22 @@ describe("session lifecycle", () => {
     expect(logout).toHaveBeenCalled();
   });
 
+  test("disconnect also drops the cached download token", async () => {
+    // The token is a 24h bearer credential the backend cannot revoke, so
+    // logging out has to remove it rather than just clearing React state.
+    const key = `authToken:${ADDR.toLowerCase()}`;
+    localStorage.setItem(key, JSON.stringify({ token: "cached-tok", expires: 9_999_999_999 }));
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn().mockResolvedValue(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [embeddedWallet()];
+    await renderApp();
+    await waitFor(() => expect(mockCapture.props.authToken).toBe("cached-tok"));
+
+    await act(async () => { await mockCapture.props.disconnectWallet(); });
+
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(mockCapture.props.authToken).toBeNull();
+  });
+
   test("a cached, unexpired auth token is reused without re-signing", async () => {
     localStorage.setItem(
       `authToken:${ADDR.toLowerCase()}`,

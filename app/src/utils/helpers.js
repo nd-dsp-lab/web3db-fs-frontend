@@ -113,31 +113,28 @@ export function toHexifNumber(input) {
     return "0x" + n.toString(16);
 }
 
-// make sure we are on the sepolia testnet
+// Make sure we are on the Sepolia testnet. Throws if we are not: the caller
+// signs a transaction straight after, and on the wrong chain that transaction
+// goes to the Sepolia contract address on mainnet — real ETH spent on a no-op.
 export async function ensureSepolia(provider = window.ethereum) {
     const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
 
+    const currentChainId = await provider.request({ method: "eth_chainId" });
+    if (currentChainId === SEPOLIA_CHAIN_ID) return;
+
     try {
-      const currentChainId = await provider.request({ method: "eth_chainId" });
-      if (currentChainId !== SEPOLIA_CHAIN_ID) {
-        try {
-          // try to switch to sepolia
-          await provider.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: SEPOLIA_CHAIN_ID }],
-          });
-          console.log("Swithched to Sepolia");
-        } catch (switchError) {
-          // sepolia isn't added to metamask
-          console.error("Cannot find Sepolia in wallet", switchError);
-          // ADD CODE TO TRY AND ADD SEPOLIA TO METAMASK HERE
-        }
-      } else {
-        console.log("Already on Sepolia");
-      }
-    } catch (err) {
-      console.error("Couldn't ensure Sepolia network:", err);
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: SEPOLIA_CHAIN_ID }],
+      });
+    } catch (switchError) {
+      // Sepolia isn't added to the wallet, or the user declined the switch
+      throw new Error("Please switch your wallet to the Sepolia test network", { cause: switchError });
     }
+
+    // A wallet may resolve the switch request without actually switching
+    const chainId = await provider.request({ method: "eth_chainId" });
+    if (chainId !== SEPOLIA_CHAIN_ID) throw new Error("Please switch your wallet to the Sepolia test network");
 }
 
 // Ensure all transaction fields are properly formatted

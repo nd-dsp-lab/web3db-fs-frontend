@@ -14,10 +14,16 @@ import { useDisplayItems } from "./hooks/useDisplayItems";
 import { useFileActions } from "./hooks/useFileActions";
 import { useConfirmDialog } from "./hooks/useConfirm";
 
+// Set VITE_API_BASE_URL (Amplify env var / app/.env.local). Deliberately no
+// fallback host: Vite inlines this at build time, so a misconfigured build
+// would silently ship a third-party endpoint that the sign-in signature and
+// every auth token get posted to. Empty means same-origin, which fails visibly.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+if (!API_BASE_URL) console.error("VITE_API_BASE_URL is not set — API requests will fail.");
+
 function App() {
-  // Replace with your actual backend URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "https://64e2c4b2e6e8.ngrok-free.app";
-  const api = useMemo(() => makeApi(API_BASE_URL), [API_BASE_URL]);
+  // API_BASE_URL is a module constant, so this never needs to rebuild
+  const api = useMemo(() => makeApi(API_BASE_URL), []);
 
   // --- STATE MANAGEMENT ---
   const [files, setFiles] = useState([]);
@@ -67,7 +73,19 @@ function App() {
   const { emptyFolders, setEmptyFolders, persistEmptyFolders } = useEmptyFolders(account);
   const { starred, starredFolders, toggleStar, toggleStarFolder, toggleStarMany, remapStarredFolders } = useStarred(account);
 
+  // Downloads and thumbnails are permission-checked server-side. The wallet
+  // signs a login message once (per 24h); the backend returns an HMAC token
+  // tied to the address, cached in localStorage. Populated by the effect below.
+  const [authToken, setAuthToken] = useState(null);
+  const authRequested = useRef(new Set());
+
   const disconnectWallet = async () => {
+    // Drop the cached download token too. It is a 24h bearer credential with
+    // no server-side revocation, so leaving it in localStorage means "logged
+    // out" still grants file access to anyone who reaches this browser profile.
+    if (account) localStorage.removeItem(`authToken:${account.toLowerCase()}`);
+    authRequested.current.delete(account);
+    setAuthToken(null);
     await logout();
     setFiles([]);
     setFileTree(null);
@@ -81,11 +99,6 @@ function App() {
   }, [wallet]);
 
   // --- DOWNLOAD AUTH TOKEN ---
-  // Downloads and thumbnails are permission-checked server-side. The wallet
-  // signs a login message once (per 24h); the backend returns an HMAC token
-  // tied to the address, cached in localStorage.
-  const [authToken, setAuthToken] = useState(null);
-  const authRequested = useRef(new Set());
   useEffect(() => {
     if (!account || !wallet) { setAuthToken(null); return; }
     const key = `authToken:${account.toLowerCase()}`;

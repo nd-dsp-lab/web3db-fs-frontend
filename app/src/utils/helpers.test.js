@@ -4,6 +4,7 @@ import {
   mergeEmptyFoldersIntoTree,
   toHexifNumber,
   normalizeTxFields,
+  ensureSepolia,
 } from "./helpers";
 
 const names = (nodes) => nodes.map((n) => n.name).sort();
@@ -101,5 +102,60 @@ describe("normalizeTxFields", () => {
     const out = normalizeTxFields({ value: 256 });
     expect(out.value).toBe("0x100");
     expect(out.gas).toBeUndefined();
+  });
+});
+
+describe("ensureSepolia", () => {
+  const SEPOLIA = "0xaa36a7";
+  const MAINNET = "0x1";
+
+  // The caller signs a transaction immediately after this resolves. On the
+  // wrong chain that transaction goes to the Sepolia contract address on
+  // mainnet — real ETH spent on a no-op — so failure has to throw, not log.
+  function fakeProvider({ chain = SEPOLIA, switchTo = null, switchError = null } = {}) {
+    let current = chain;
+    const calls = [];
+    return {
+      calls,
+      request: async ({ method }) => {
+        calls.push(method);
+        if (method === "eth_chainId") return current;
+        if (method === "wallet_switchEthereumChain") {
+          if (switchError) throw switchError;
+          if (switchTo !== null) current = switchTo;
+          return null;
+        }
+        return null;
+      },
+    };
+  }
+
+  test("already on Sepolia: resolves without asking the wallet to switch", async () => {
+    const provider = fakeProvider({ chain: SEPOLIA });
+    await expect(ensureSepolia(provider)).resolves.toBeUndefined();
+    expect(provider.calls).toEqual(["eth_chainId"]);
+  });
+
+  test("switches when on another chain and resolves once it lands", async () => {
+    const provider = fakeProvider({ chain: MAINNET, switchTo: SEPOLIA });
+    await expect(ensureSepolia(provider)).resolves.toBeUndefined();
+    expect(provider.calls).toContain("wallet_switchEthereumChain");
+  });
+
+  test("throws when the user declines the switch", async () => {
+    const declined = Object.assign(new Error("User rejected"), { code: 4001 });
+    const provider = fakeProvider({ chain: MAINNET, switchError: declined });
+    await expect(ensureSepolia(provider)).rejects.toThrow(/Sepolia/);
+  });
+
+  test("throws when the wallet has no Sepolia to switch to", async () => {
+    const missing = Object.assign(new Error("Unrecognized chain"), { code: 4902 });
+    const provider = fakeProvider({ chain: MAINNET, switchError: missing });
+    await expect(ensureSepolia(provider)).rejects.toThrow(/Sepolia/);
+  });
+
+  test("throws when the wallet reports success but stays on the wrong chain", async () => {
+    const provider = fakeProvider({ chain: MAINNET, switchTo: MAINNET });
+    await expect(ensureSepolia(provider)).rejects.toThrow(/Sepolia/);
   });
 });
