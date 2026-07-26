@@ -19,6 +19,7 @@ import { useSelection } from "../hooks/useSelection";
 import { useDownloads } from "../hooks/useDownloads";
 import { useExternalDropUpload } from "../hooks/useExternalDropUpload";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useSortedItems } from "../hooks/useSortedItems";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
@@ -226,32 +227,9 @@ export default function AppLayout({
     );
   };
 
-  // --- SORTING ---
-  const [sortBy, setSortBy] = useState("name"); // "name" | "date" | "size"
-  const [sortDir, setSortDir] = useState("asc");
-  const dirMul = sortDir === "asc" ? 1 : -1;
-  const fileCmp = {
-    name: (a, b) => (a.filename || a.name || "").localeCompare(b.filename || b.name || "", undefined, { numeric: true, sensitivity: "base" }),
-    date: (a, b) => (a.timestamp || 0) - (b.timestamp || 0),
-    size: (a, b) => (a.size || 0) - (b.size || 0),
-  }[sortBy];
-  const toggleSort = (key) => {
-    if (sortBy === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortBy(key); setSortDir(key === "name" ? "asc" : "desc"); } // newest/largest first feels natural
-  };
+  const { sortBy, sortDir, toggleSort, folders, fileItems } =
+    useSortedItems({ displayItems, folderStatsOf, folderPathOf });
 
-  // Folders sort like files: name directly, size/date from aggregate stats
-  // (total size, latest file timestamp)
-  const folders = (displayItems || []).filter((i) => i.type === "folder")
-    .map((i) => {
-      if (sortBy === "name" || !folderStatsOf) return i;
-      // Trash-view folder paths are logical — the real path sits under /.trash
-      const s = folderStatsOf((i.trash ? "/.trash" : "") + folderPathOf(i));
-      return { ...i, size: s.size, timestamp: s.latest || 0 };
-    })
-    .sort((a, b) => fileCmp(a, b) * dirMul);
-  const fileItems = (displayItems || []).filter((i) => i.type === "file")
-    .sort((a, b) => fileCmp(a, b) * dirMul);
   const selectedFiles = fileItems.filter((f) => selected.has(f.cid));
   const folderKeyOf = (item) => `folder:${folderPathOf(item)}`;
   const selectedFolders = folders.filter((i) => selected.has(folderKeyOf(i)));
@@ -413,7 +391,7 @@ export default function AppLayout({
     searchQuery, crumbs, crumbPath, currentPath, setCurrentPath,
     dropHover, dropUnhover, onInternalDropTo,
     displayItems, handleDeleteFolder, viewMode, setViewMode,
-    setSortBy, setSortDir, detailsOpen, setDetailsOpen,
+    detailsOpen, setDetailsOpen,
     searchType, setSearchType, searchScope, setSearchScope,
     newMenuItems, confirm,
     // FolderMenu

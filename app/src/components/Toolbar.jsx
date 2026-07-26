@@ -22,7 +22,7 @@ export default function Toolbar() {
     dropHover, dropUnhover, onInternalDropTo,
     // right-side controls
     displayItems, handleDeleteFolder, viewMode, setViewMode,
-    sortBy, setSortBy, sortDir, setSortDir, detailsOpen, setDetailsOpen,
+    sortBy, sortDir, toggleSort, detailsOpen, setDetailsOpen,
     // search chips
     searchType, setSearchType, searchScope, setSearchScope,
     confirm,
@@ -146,7 +146,7 @@ export default function Toolbar() {
           <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
             <select
               value={sortBy}
-              onChange={(e) => { setSortBy(e.target.value); setSortDir(e.target.value === "name" ? "asc" : "desc"); }}
+              onChange={(e) => toggleSort(e.target.value)}
               title="Sort by"
               style={{
                 border: `1px solid ${theme.border}`, borderRadius: "999px", padding: "6px 10px",
@@ -157,8 +157,9 @@ export default function Toolbar() {
               <option value="date">Uploaded</option>
               <option value="size">Size</option>
             </select>
+            {/* Re-picking the current column is what flips the direction */}
             <button
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              onClick={() => toggleSort(sortBy)}
               title={sortDir === "asc" ? "Ascending" : "Descending"}
               style={{
                 background: "none", border: "none", cursor: "pointer", color: theme.subText,
