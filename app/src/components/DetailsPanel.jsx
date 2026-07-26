@@ -27,18 +27,18 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
       if (!cids.length) { setSharedUsers([]); return; }
       fetch(`${API_BASE_URL}/shared-users-batch`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true", "x-auth-token": authToken },
         body: JSON.stringify({ cids, user_address: account }),
       }).then((r) => r.json()).then(done).catch(fail);
     } else {
       if (!file.is_owner) return;
       fetch(
-        `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}&user_address=${encodeURIComponent(account)}`,
-        { headers: { "ngrok-skip-browser-warning": "true" } }
+        `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`,
+        { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
       ).then((r) => r.json()).then(done).catch(fail);
     }
     return () => { cancelled = true; };
-  }, [file, account, API_BASE_URL]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [file, account, authToken, API_BASE_URL]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const row = (label, value) => (
     <div style={{ marginBottom: "14px" }}>

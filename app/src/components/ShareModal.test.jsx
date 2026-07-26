@@ -15,7 +15,7 @@ function mockShared(list) {
 function setup(over = {}) {
   const props = {
     file: { cid: "c1", filename: "a.pdf" },
-    account: ACCOUNT, API_BASE_URL: "http://api",
+    account: ACCOUNT, authToken: "tok", API_BASE_URL: "http://api",
     onClose: vi.fn(), onShare: vi.fn().mockResolvedValue(), onUnshare: vi.fn().mockResolvedValue(),
     darkMode: false, confirm: vi.fn().mockResolvedValue(true),
     ...over,
@@ -96,4 +96,25 @@ test("the close button dismisses the modal", () => {
   // the X in the header is the first (icon-only) button
   fireEvent.click(screen.getAllByRole("button")[0]);
   expect(props.onClose).toHaveBeenCalled();
+});
+
+// The recipient list is private to the owner, and cids are public, so the
+// backend identifies the caller by token rather than by a user_address the
+// caller supplies. These assert the client actually sends one.
+
+test("the single-file lookup is authenticated by token, not by address", async () => {
+  setup();
+  await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+  const [url, init] = global.fetch.mock.calls[0];
+  expect(init.headers["x-auth-token"]).toBe("tok");
+  expect(url).not.toContain("user_address");
+});
+
+test("the folder lookup is authenticated by token too", async () => {
+  setup({ file: { folder: true, filename: "docs", cids: ["c1", "c2"] } });
+  await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+  const [, init] = global.fetch.mock.calls[0];
+  expect(init.headers["x-auth-token"]).toBe("tok");
 });

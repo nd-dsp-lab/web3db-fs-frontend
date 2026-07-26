@@ -701,6 +701,7 @@ export default function AppLayout({
         <ShareModal
           file={shareFile}
           account={account}
+          authToken={authToken}
           API_BASE_URL={API_BASE_URL}
           confirm={confirm}
           onClose={() => setShareFile(null)}

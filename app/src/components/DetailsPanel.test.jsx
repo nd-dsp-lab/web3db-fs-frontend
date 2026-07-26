@@ -89,3 +89,15 @@ test("a folder shared to me credits the owner without fetching", () => {
   expect(screen.getByText(new RegExp("Shared with you by", "i"))).toBeInTheDocument();
   expect(global.fetch).not.toHaveBeenCalled();
 });
+
+test("shared-user lookups carry the auth token and no claimed address", async () => {
+  // cids are public, so identity has to come from the token — a user_address
+  // in the query string would let anyone read any owner's sharing graph.
+  setup({ file: { cid: "c1", filename: "a.pdf", is_owner: true, size: 1, folder_path: "/" } });
+  await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+
+  const [url, init] = global.fetch.mock.calls[0];
+  expect(url).toContain("/shared-users?cid=c1");
+  expect(url).not.toContain("user_address");
+  expect(init.headers["x-auth-token"]).toBe("tok");
+});

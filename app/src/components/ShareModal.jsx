@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { X, UserPlus, Loader2, Trash2 } from "lucide-react";
 
 export default function ShareModal({
-  file, account, API_BASE_URL, onClose, onShare, onUnshare, darkMode, confirm,
+  file, account, authToken, API_BASE_URL, onClose, onShare, onUnshare, darkMode, confirm,
 }) {
   const [recipient, setRecipient] = useState("");
   const [sharedUsers, setSharedUsers] = useState([]);
@@ -24,12 +24,12 @@ export default function ShareModal({
       const res = file.folder
         ? await fetch(`${API_BASE_URL}/shared-users-batch`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+            headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true", "x-auth-token": authToken },
             body: JSON.stringify({ cids: file.cids, user_address: account }),
           })
         : await fetch(
-            `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}&user_address=${encodeURIComponent(account)}`,
-            { headers: { "ngrok-skip-browser-warning": "true" } }
+            `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`,
+            { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
           );
       const data = await res.json();
       setSharedUsers(data.shared_with || []);
@@ -38,7 +38,7 @@ export default function ShareModal({
     } finally {
       setLoadingList(false);
     }
-  }, [API_BASE_URL, file.cid, file.folder, file.cids, account]);
+  }, [API_BASE_URL, file.cid, file.folder, file.cids, account, authToken]);
 
   useEffect(() => { fetchSharedUsers(); }, [fetchSharedUsers]);
 
