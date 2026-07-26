@@ -21,6 +21,7 @@ import { useExternalDropUpload } from "../hooks/useExternalDropUpload";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSortedItems } from "../hooks/useSortedItems";
 import { useDragMove } from "../hooks/useDragMove";
+import { useContextMenus } from "../hooks/useContextMenus";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
@@ -51,12 +52,6 @@ export default function AppLayout({
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, storageQuota, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove, confirm,
 }) {
-  const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
-  const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
-  const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
-  const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
-  const [folderOrganizeOpen, setFolderOrganizeOpen] = useState(false); // Organize hover submenu in folder menu
-  const [selMenu, setSelMenu] = useState(null); // { x, y } — right-click menu over a multi-selection
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
@@ -69,44 +64,8 @@ export default function AppLayout({
   const { selected, setSelected, toggleSelect, clearSelection, band, contentRef, onBandStart } =
     useSelection({ view, currentPath, searchQuery });
 
-  // Close the New dropdown on outside click or Escape (clicks inside the
-  // container are stopped from propagating below)
-  useEffect(() => {
-    if (!isNewMenuOpen) return;
-    const close = () => setIsNewMenuOpen(false);
-    const onKey = (e) => { if (e.key === "Escape") close(); };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [isNewMenuOpen]);
-
   const { dragOver, onDragEnter, onDragLeave, onDragOverContent, onExternalDrop } =
     useExternalDropUpload({ view, searchQuery, toast, handleDropUpload });
-
-  // --- BACKGROUND RIGHT-CLICK MENU (New folder / uploads) ---
-  // Only in My Drive: uploads and new folders target the current path,
-  // which the other views don't have.
-  const onBackgroundContextMenu = (e) => {
-    if (view !== "my-drive" || searchQuery) return;
-    if (e.target.closest("[data-cid],[data-noselect],button,input,a,table thead")) return;
-    e.preventDefault();
-    setBgMenu({ x: e.clientX, y: e.clientY });
-  };
-
-  useEffect(() => {
-    if (!bgMenu && !folderMenu && !selMenu) return;
-    const close = () => { setBgMenu(null); setFolderMenu(null); setSelMenu(null); setFolderOrganizeOpen(false); };
-    const onKey = (e) => { if (e.key === "Escape") close(); };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [bgMenu, folderMenu, selMenu]);
 
   const { downloadFile, downloadMany, downloadFolder } =
     useDownloads({ API_BASE_URL, account, authToken, toast });
@@ -120,14 +79,6 @@ export default function AppLayout({
       const id = mode === "folder" ? "folderIn" : "fileIn";
       document.getElementById(id)?.click();
     }, 10);
-  };
-
-  const openMenuForFile = (e, item) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Right-click inside a multi-selection acts on the whole selection
-    if (selectedCount > 1 && selected.has(item.cid)) { setSelMenu({ x: e.clientX, y: e.clientY }); return; }
-    setContextMenu({ x: e.clientX, y: e.clientY, file: item });
   };
 
   // Folder items in My Drive only carry a name (path = currentPath + name);
@@ -146,15 +97,6 @@ export default function AppLayout({
 
   const promptRenameFolder = (folderName, folderPath) =>
     setRenameTarget({ type: "folder", name: folderName, path: folderPath });
-
-  const openMenuForFolder = (e, item) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Right-click inside a multi-selection acts on the whole selection
-    if (selectedCount > 1 && selected.has(folderKeyOf(item))) { setSelMenu({ x: e.clientX, y: e.clientY }); return; }
-    setFolderOrganizeOpen(false);
-    setFolderMenu({ x: e.clientX, y: e.clientY, name: item.name, path: folderPathOf(item), shared: !!item.shared, trash: !!item.trash });
-  };
 
   const navigateInto = (item) => {
     // Shared/trash folders browse within their own views; starred-view and
@@ -192,6 +134,18 @@ export default function AppLayout({
   // Multi-select share: owned files + owned folders expanded to their cids,
   // presented through the ShareModal's folder mode as one grantFiles tx.
   const ownedSelection = selectedFiles.every((f) => f.is_owner) && selectedFolders.every((i) => !i.shared);
+  const {
+    isNewMenuOpen, setIsNewMenuOpen,
+    contextMenu, closeContextMenu,
+    bgMenu, setBgMenu, folderMenu, setFolderMenu,
+    folderOrganizeOpen, setFolderOrganizeOpen, selMenu, setSelMenu,
+    openMenuForFile, openMenuForFolder, onBackgroundContextMenu,
+  } = useContextMenus({
+    view, searchQuery,
+    selection: { count: selectedCount, has: (key) => selected.has(key) },
+    folderPathOf, folderKeyOf,
+  });
+
   const {
     onFileDragStart, onFolderDragStart, canDragFolder,
     onInternalDropTo, onFolderDrop, dropHover, dropUnhover,
@@ -506,7 +460,7 @@ export default function AppLayout({
           fileTree={fileTree}
           currentPath={currentPath}
           confirm={confirm}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           onDownload={downloadFile}
           onDetails={openDetails}
           onShareOpen={(file) => setShareFile(file)}
