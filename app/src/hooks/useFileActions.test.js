@@ -31,6 +31,7 @@ function setup({
   uploadMode = "file",
   user = null,
   currentPath = "/",
+  initialEmptyFolders = [],
 } = {}) {
   const calls = { api: [], toasts: [], provider: [], retrieveFiles: 0, view: [], opts: [] };
 
@@ -65,7 +66,7 @@ function setup({
 
   if (uploadResponse) installFakeXHR(uploadResponse, calls);
 
-  let emptyFolders = new Set();
+  let emptyFolders = new Set(initialEmptyFolders);
   const actions = useFileActions({
     account: ACCOUNT,
     api,
@@ -823,5 +824,74 @@ describe("folder rename and move execution", () => {
     await actions.handleMoveFolder("/docs", "/archive");
 
     expect(posted(calls, "/move-batch")[0].new_paths).toEqual(["/archive/docs/a.pdf"]);
+  });
+});
+
+// --- local bookkeeping must not run ahead of the chain ---------------------
+// Empty folders and folder stars live only in localStorage. runBatchMove
+// handles its own failures and resolves either way, so callers have to gate
+// their local rewrites on its result — otherwise a rejected signature leaves
+// the UI (and localStorage) describing a move that never happened.
+
+describe("a failed batch move leaves local folder state untouched", () => {
+  // /docs holds a.pdf on-chain and an empty subfolder /docs/drafts locally
+  const withSubfolder = {
+    files: [file({ cid: "c1", filename: "a.pdf", folder_path: "/docs" })],
+    initialEmptyFolders: ["/docs/drafts"],
+  };
+
+  test("rename: a rejected signature does not create a ghost folder", async () => {
+    const { actions, calls, getEmptyFolders } = setup({ ...withSubfolder, rejectSignature: true });
+    await actions.handleRenameFolder("/docs", "papers");
+
+    expect(getEmptyFolders().has("/docs/drafts")).toBe(true);
+    expect(getEmptyFolders().has("/papers/drafts")).toBe(false);
+    expect(posted(calls, "remapStarred")).toEqual([]);
+    expect(said(calls, "rejected")).toBe(true);
+  });
+
+  test("rename: a prepare failure does not create a ghost folder either", async () => {
+    const { actions, calls, getEmptyFolders } = setup({
+      ...withSubfolder,
+      responses: { "/move-batch": { error: "nope" } }, // no transaction field
+    });
+    await actions.handleRenameFolder("/docs", "papers");
+
+    expect(getEmptyFolders().has("/docs/drafts")).toBe(true);
+    expect(posted(calls, "remapStarred")).toEqual([]);
+    expect(types(calls)).toContain("error");
+  });
+
+  test("trash folder: a rejected signature keeps the subfolder and its star", async () => {
+    const { actions, calls, getEmptyFolders } = setup({ ...withSubfolder, rejectSignature: true });
+    await actions.handleTrashFolder("/docs");
+
+    expect(getEmptyFolders().has("/docs/drafts")).toBe(true);
+    expect(posted(calls, "remapStarred")).toEqual([]);
+  });
+
+  test("bulk trash: a rejected signature keeps the folders' local entries", async () => {
+    const { actions, calls, getEmptyFolders } = setup({ ...withSubfolder, rejectSignature: true });
+    await actions.handleBulkTrash([file({ cid: "c1", folder_path: "/docs" })], ["/docs"]);
+
+    expect(getEmptyFolders().has("/docs/drafts")).toBe(true);
+    expect(posted(calls, "remapStarred")).toEqual([]);
+  });
+
+  test("bulk move: a rejected signature leaves the subfolder where it was", async () => {
+    const { actions, getEmptyFolders } = setup({ ...withSubfolder, rejectSignature: true });
+    await actions.handleBulkMove([file({ cid: "c1", folder_path: "/docs" })], ["/docs"], "/archive");
+
+    expect(getEmptyFolders().has("/docs/drafts")).toBe(true);
+    expect(getEmptyFolders().has("/archive/docs/drafts")).toBe(false);
+  });
+
+  test("the same rename succeeds end to end when the signature goes through", async () => {
+    const { actions, calls, getEmptyFolders } = setup(withSubfolder);
+    await actions.handleRenameFolder("/docs", "papers");
+
+    expect(getEmptyFolders().has("/papers/drafts")).toBe(true);
+    expect(getEmptyFolders().has("/docs/drafts")).toBe(false);
+    expect(posted(calls, "remapStarred")).toEqual([{ from: "/docs", to: "/papers" }]);
   });
 });

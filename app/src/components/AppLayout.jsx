@@ -405,7 +405,8 @@ export default function AppLayout({
   shortcutRef.current = (e) => {
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    if (previewFile || shareFile || detailsFile || renameTarget) return;
+    // Gate on what is actually open, not on detailsFile, which lingers
+    if (previewFile || shareFile || detailsOpen || newFolderOpen || renameTarget) return;
     const combo = (e.metaKey || e.ctrlKey) && e.altKey;
 
     if (e.key === "F2" || (combo && e.code === "KeyE")) {
@@ -658,7 +659,9 @@ export default function AppLayout({
             account={account}
             authToken={authToken}
             API_BASE_URL={API_BASE_URL}
-            onClose={() => setDetailsOpen(false)}
+            // detailsFile also gates the keyboard shortcuts, so it has to be
+            // cleared here or they stay dead for the rest of the session.
+            onClose={() => { setDetailsOpen(false); setDetailsFile(null); }}
             theme={theme}
             toast={toast}
             isStarred={detailsFile

@@ -408,3 +408,31 @@ describe("list view and sorting", () => {
     expect(screen.getByTitle("Descending")).toBeInTheDocument();
   });
 });
+
+// The details panel gates the keyboard shortcuts while it is open. It used to
+// gate on detailsFile, which nothing ever cleared, so opening the panel once
+// killed every shortcut for the rest of the session.
+describe("keyboard shortcuts and the details panel", () => {
+  const openThenCloseDetails = () => {
+    fireEvent.click(screen.getByTitle("File details"));
+    fireEvent.click(screen.getByLabelText("Close details"));
+  };
+
+  test("shortcuts are suppressed while the panel is open", () => {
+    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    fireEvent.click(screen.getByTitle("File details"));
+
+    fireEvent.keyDown(document, { key: "F2" });
+    expect(screen.queryByDisplayValue("report.txt")).not.toBeInTheDocument();
+  });
+
+  test("shortcuts work again once the panel is closed", () => {
+    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    openThenCloseDetails();
+
+    fireEvent.keyDown(document, { key: "F2" });
+    expect(screen.getByDisplayValue("report.txt")).toBeInTheDocument();
+  });
+});

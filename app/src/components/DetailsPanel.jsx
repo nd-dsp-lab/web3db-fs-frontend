@@ -87,6 +87,7 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
         </div>
         <button
           onClick={onClose}
+          aria-label="Close details"
           style={{
             background: "none", border: "none", cursor: "pointer", color: theme.subText,
             width: "32px", height: "32px", borderRadius: "50%", display: "flex",

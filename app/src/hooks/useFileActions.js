@@ -269,13 +269,15 @@ export function useFileActions({
       if (!data.transaction) {
         console.error("Batch move prepare failed:", data);
         toast.update(tId, `${label} failed. Check console for details.`, "error");
-        return;
+        return false;
       }
       await signAndVerifyTransaction(data.transaction, tId);
       toast.update(tId, `${label.replace(/ing/, "ed")} ${data.count} file(s)`, "success");
       retrieveFiles();
+      return true;
     } catch (err) {
       reportTxError(label, err, tId);
+      return false;
     }
   };
 
@@ -308,8 +310,9 @@ export function useFileActions({
       if (folderPaths.length) toast.success("Folder(s) deleted");
       return;
     }
-    await runBatchMove(all, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
-    dropFolderEntries();
+    // Local bookkeeping only once the move is actually on-chain — otherwise a
+    // rejected signature still deletes the folders' local entries and stars.
+    if (await runBatchMove(all, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`)) dropFolderEntries();
   };
 
   // Multi-select drag: move files plus whole folders to destFolder in one
@@ -360,8 +363,7 @@ export function useFileActions({
       return;
     }
     const pathByCid = new Map(moves.map((m) => [m.file.cid, m.to]));
-    await runBatchMove(moves.map((m) => m.file), "Moving", (f) => pathByCid.get(f.cid));
-    rewriteLocal();
+    if (await runBatchMove(moves.map((m) => m.file), "Moving", (f) => pathByCid.get(f.cid))) rewriteLocal();
   };
 
   // Files in the trash under a logical folder path (path without /.trash)
@@ -625,9 +627,10 @@ export function useFileActions({
       toast.success("Folder deleted");
       return;
     }
-    await runBatchMove(affected, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`);
-    dropEmptyEntries();
-    remapStarredFolders(folderPath);
+    if (await runBatchMove(affected, "Moving to trash", (f) => `${TRASH_PREFIX}${fullPathOf(f)}`)) {
+      dropEmptyEntries();
+      remapStarredFolders(folderPath);
+    }
   };
 
   // --- FOLDER RENAME & MOVE ---
@@ -654,9 +657,10 @@ export function useFileActions({
       toast.success(doneMsg);
       return;
     }
-    await runBatchMove(affected, label, (f) => newPath + fullPathOf(f).slice(folderPath.length));
-    rewriteEmptyFolders();
-    remapStarredFolders(folderPath, newPath);
+    if (await runBatchMove(affected, label, (f) => newPath + fullPathOf(f).slice(folderPath.length))) {
+      rewriteEmptyFolders();
+      remapStarredFolders(folderPath, newPath);
+    }
   };
 
   const handleRenameFolder = (folderPath, newName) => {
