@@ -27,11 +27,13 @@ export default defineConfig({
       exclude: ["src/index.jsx", "src/**/*.test.{js,jsx}"],
       // Ratchet — pinned at the coverage on the day it was set, not a target.
       // Raise as coverage rises; never lower to make a build pass.
+      // Measure with `npm run test:coverage` on Node 20 (see .nvmrc): v8 and
+      // istanbul count functions differently, so these are v8 numbers only.
       thresholds: {
-        statements: 77,
-        branches: 66,
-        functions: 68,
-        lines: 82,
+        statements: 90,
+        branches: 79,
+        functions: 70,
+        lines: 90,
       },
     },
   },
