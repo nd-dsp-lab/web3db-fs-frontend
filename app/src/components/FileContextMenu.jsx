@@ -34,6 +34,7 @@ export default function FileContextMenu({
   x,
   y,
   file,
+  theme,
   fileTree,
   currentPath,
   confirm,
@@ -81,33 +82,36 @@ export default function FileContextMenu({
   const { permissions, is_owner } = file;
 
   // ---- Styles ----
+  // Colours come from the app theme; only the semantic ones (danger, share,
+  // starred) are literals, since those read correctly on either background.
   const menuStyle = {
     position: "fixed", top: y, left: x, zIndex: 9999,
-    background: "#fff", border: "1px solid #ddd", borderRadius: "6px",
+    background: theme.card, border: `1px solid ${theme.border}`, borderRadius: "6px",
     boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: "180px",
-    padding: "4px 0", fontSize: "0.875em",
+    padding: "4px 0", fontSize: "0.875em", color: theme.text,
   };
   const itemBase = {
     padding: "8px 16px", cursor: "pointer", display: "flex",
     alignItems: "center", gap: "8px", whiteSpace: "nowrap",
     userSelect: "none", position: "relative",
   };
-  const dividerStyle = { borderTop: "1px solid #eee", margin: "4px 0" };
+  const dividerStyle = { borderTop: `1px solid ${theme.border}`, margin: "4px 0" };
 
-  const Item = ({ icon, label, onClick, color = "#222", disabled = false, shortcut }) => (
+  const Item = ({ icon, label, onClick, color, disabled = false, shortcut }) => (
     <div
       onMouseDown={e => { e.stopPropagation(); if (!disabled) onClick(); }}
       style={{
         ...itemBase,
-        color: disabled ? "#bbb" : color,
+        color: color || theme.text,
+        opacity: disabled ? 0.5 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
       }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = "#f5f5f5"; }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = theme.hoverRow; }}
       onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
     >
       <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>
       {label}
-      {shortcut && <span style={{ marginLeft: "auto", paddingLeft: "18px", color: "#999", fontSize: "0.85em" }}>{shortcut}</span>}
+      {shortcut && <span style={{ marginLeft: "auto", paddingLeft: "18px", color: theme.subText, fontSize: "0.85em" }}>{shortcut}</span>}
     </div>
   );
 
@@ -180,20 +184,20 @@ export default function FileContextMenu({
         >
           <div
             style={{ ...itemBase, justifyContent: "space-between" }}
-            onMouseEnter={e => { e.currentTarget.style.background = "#f5f5f5"; }}
+            onMouseEnter={e => { e.currentTarget.style.background = theme.hoverRow; }}
             onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
           >
             <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}><FolderInput size={15} /></span>
               Organize
             </span>
-            <ChevronRight size={14} color="#999" />
+            <ChevronRight size={14} color={theme.subText} />
           </div>
 
           {showOrganize && (
             <div style={{
               position: "absolute", top: 0, left: "100%",
-              background: "#fff", border: "1px solid #ddd", borderRadius: "6px",
+              background: theme.card, border: `1px solid ${theme.border}`, borderRadius: "6px",
               boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: "200px",
               maxHeight: "260px", overflowY: "auto", padding: "4px 0", zIndex: 10000,
             }}>
@@ -204,7 +208,7 @@ export default function FileContextMenu({
                 onClick={() => { onToggleStar(file.cid); onClose(); }}
               />
               <div style={dividerStyle} />
-              <div style={{ padding: "4px 16px", fontSize: "0.8em", color: "#999" }}>Move to</div>
+              <div style={{ padding: "4px 16px", fontSize: "0.8em", color: theme.subText }}>Move to</div>
 
               {currentPath !== "/" && (
                 <div
@@ -217,15 +221,15 @@ export default function FileContextMenu({
                     await onMove(file.cid, newPath);
                   }}
                   style={itemBase}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f5f5f5"}
+                  onMouseEnter={e => e.currentTarget.style.background = theme.hoverRow}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                 >
-                  <Folder size={14} color="#5f6368" /> /
+                  <Folder size={14} color={theme.subText} /> /
                 </div>
               )}
 
               {folders.length === 0 && currentPath === "/" && (
-                <div style={{ ...itemBase, color: "#bbb", cursor: "default" }}>No other folders</div>
+                <div style={{ ...itemBase, color: theme.subText, opacity: 0.7, cursor: "default" }}>No other folders</div>
               )}
 
               {folders.map(({ label, path }) => (
@@ -240,10 +244,10 @@ export default function FileContextMenu({
                     await onMove(file.cid, newPath);
                   }}
                   style={itemBase}
-                  onMouseEnter={e => e.currentTarget.style.background = "#f5f5f5"}
+                  onMouseEnter={e => e.currentTarget.style.background = theme.hoverRow}
                   onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                 >
-                  <Folder size={14} color="#5f6368" /> {label}
+                  <Folder size={14} color={theme.subText} /> {label}
                 </div>
               ))}
             </div>

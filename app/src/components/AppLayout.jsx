@@ -736,6 +736,7 @@ export default function AppLayout({
           x={contextMenu.x}
           y={contextMenu.y}
           file={contextMenu.file}
+          theme={theme}
           fileTree={fileTree}
           currentPath={currentPath}
           confirm={confirm}
