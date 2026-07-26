@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { X, Download, FileWarning, Loader2 } from "lucide-react";
 import { DOWNLOAD } from "../utils/permissions";
+import { makeTheme } from "../lib/theme";
 
 const TEXT_EXTS = ["txt", "md", "csv", "tsv", "log", "json", "js", "jsx", "ts", "tsx", "py", "sol", "go", "rs", "c", "cpp", "h", "java", "html", "css", "sh", "yml", "yaml", "toml", "xml", "env", "ini", "conf"];
 const TEXT_PREVIEW_LIMIT = 1024 * 1024; // 1 MB
@@ -35,6 +36,7 @@ export function previewKind(filename = "", mime = "") {
 }
 
 export default function PreviewModal({ file, account, authToken, API_BASE_URL, onClose, onDownload, darkMode }) {
+  const theme = makeTheme(darkMode);
   const [state, setState] = useState({ status: "loading" }); // loading | ready | error
   const [objectUrl, setObjectUrl] = useState(null);
   const [textContent, setTextContent] = useState(null);
@@ -120,7 +122,7 @@ export default function PreviewModal({ file, account, authToken, API_BASE_URL, o
           <pre style={{
             width: "80vw", maxHeight: "80vh", overflow: "auto", margin: 0,
             padding: "20px", borderRadius: "8px", fontSize: "13px", lineHeight: 1.5,
-            backgroundColor: darkMode ? "#1E1F20" : "#fff", color: darkMode ? "#E3E3E3" : "#1F1F1F",
+            backgroundColor: theme.card, color: theme.text,
             whiteSpace: "pre-wrap", wordBreak: "break-word",
           }}>{textContent}</pre>
         );

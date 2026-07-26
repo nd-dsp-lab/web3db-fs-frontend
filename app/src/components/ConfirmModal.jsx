@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { makeTheme, BLUE, DANGER } from "../lib/theme";
 
 // Drive-style confirmation dialog, the themed replacement for window.confirm.
 // Rendered by App from useConfirmDialog state; danger=true styles the confirm
@@ -17,10 +18,8 @@ export default function ConfirmModal({
 
   useEffect(() => { confirmRef.current?.focus(); }, []);
 
-  const theme = darkMode
-    ? { card: "#1E1F20", text: "#E3E3E3", subText: "#9AA0A6" }
-    : { card: "#FFFFFF", text: "#1F1F1F", subText: "#5F6368" };
-  const accent = danger ? "#d93025" : "#1A73E8";
+  const theme = makeTheme(darkMode);
+  const accent = danger ? DANGER : BLUE;
 
   return (
     <div

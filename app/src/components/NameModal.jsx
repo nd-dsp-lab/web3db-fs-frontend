@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { makeTheme } from "../lib/theme";
 
 // Drive-style name dialog, used for both Rename and New folder. For a file
 // rename the base name is pre-selected so typing replaces it without
@@ -37,9 +38,11 @@ export default function NameModal({
     onClose();
   };
 
-  const theme = darkMode
-    ? { card: "#1E1F20", text: "#E3E3E3", subText: "#9AA0A6", border: "#3C4043", inputBg: "#131314" }
-    : { card: "#FFFFFF", text: "#1F1F1F", subText: "#5F6368", border: "#DADCE0", inputBg: "#FFFFFF" };
+  // This dialog's field is a large borderless input that sits flush with the
+  // card, so it takes the page/card background rather than the filled inputBg
+  // the other modals use.
+  const base = makeTheme(darkMode);
+  const theme = { ...base, inputBg: darkMode ? base.bg : base.card };
 
   return (
     <div

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { X, UserPlus, Loader2, Trash2 } from "lucide-react";
+import { makeTheme } from "../lib/theme";
 
 export default function ShareModal({
   file, account, authToken, API_BASE_URL, onClose, onShare, onUnshare, darkMode, confirm,
@@ -9,13 +10,7 @@ export default function ShareModal({
   const [loadingList, setLoadingList] = useState(true);
   const [busy, setBusy] = useState(null); // "share" | address being revoked | null
 
-  const t = darkMode ? {
-    card: "#1E1F20", text: "#E3E3E3", subText: "#9AA0A6", border: "#3C4043",
-    inputBg: "#282A2C", rowHover: "#2D2E31",
-  } : {
-    card: "#FFFFFF", text: "#1F1F1F", subText: "#5F6368", border: "#E0E3E7",
-    inputBg: "#F0F4F9", rowHover: "#F5F8FC",
-  };
+  const t = makeTheme(darkMode);
 
   const fetchSharedUsers = useCallback(async () => {
     setLoadingList(true);
@@ -171,7 +166,7 @@ export default function ShareModal({
             <div
               key={addr}
               style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 4px", borderRadius: "8px" }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = t.rowHover}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = t.hoverRow}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
             >
               <div style={{

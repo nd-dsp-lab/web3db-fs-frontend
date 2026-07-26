@@ -16,6 +16,7 @@ import BackgroundMenu from "./BackgroundMenu";
 import FolderMenu from "./FolderMenu";
 import SelectionMenu from "./SelectionMenu";
 import { useSelection } from "../hooks/useSelection";
+import { makeTheme } from "../lib/theme";
 import { LayoutContext } from "../contexts/LayoutContext";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
@@ -211,16 +212,7 @@ export default function AppLayout({
     toast.update(tId, `Downloaded ${done} file(s)`, "success");
   };
 
-  // Google Drive palette (light) with a matching dark variant
-  const theme = darkMode ? {
-    bg: "#131314", card: "#1E1F20", text: "#E3E3E3", subText: "#9AA0A6",
-    border: "#3C4043", searchBg: "#282A2C", tile: "#2D2E31", tileHover: "#37393B",
-    navActive: "#004A77", navActiveText: "#C2E7FF", hoverRow: "#2D2E31",
-  } : {
-    bg: "#F8FAFD", card: "#FFFFFF", text: "#1F1F1F", subText: "#5F6368",
-    border: "#E0E3E7", searchBg: "#EDF1F7", tile: "#F0F4F9", tileHover: "#E1E5EA",
-    navActive: "#C2E7FF", navActiveText: "#001D35", hoverRow: "#F5F8FC",
-  };
+  const theme = makeTheme(darkMode);
 
   // --- DRAG AND DROP LOGIC ---
   // Internal drags move files/folders between folders; drop targets are
