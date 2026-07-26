@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Folder, Users, MoreVertical, Upload, FolderUp, FolderPlus,
 } from "lucide-react";
@@ -18,6 +18,7 @@ import SelectionMenu from "./SelectionMenu";
 import { useSelection } from "../hooks/useSelection";
 import { useDownloads } from "../hooks/useDownloads";
 import { useExternalDropUpload } from "../hooks/useExternalDropUpload";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
@@ -260,62 +261,20 @@ export default function AppLayout({
   // Multi-select share: owned files + owned folders expanded to their cids,
   // presented through the ShareModal's folder mode as one grantFiles tx.
   const ownedSelection = selectedFiles.every((f) => f.is_owner) && selectedFolders.every((i) => !i.shared);
-  // --- KEYBOARD SHORTCUTS (Drive-style) ---
-  // ⌥⌘E / F2 rename (single selection), Delete/Backspace trash (delete
-  // forever in Trash), ⌥⌘S toggle star — all act on the current selection.
-  // Handler lives in a ref so the listener registers once but reads fresh state.
-  const shortcutRef = useRef();
-  shortcutRef.current = (e) => {
-    const t = e.target;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  useKeyboardShortcuts({
     // Gate on what is actually open, not on detailsFile, which lingers
-    if (previewFile || shareFile || detailsOpen || newFolderOpen || renameTarget) return;
-    const combo = (e.metaKey || e.ctrlKey) && e.altKey;
-
-    if (e.key === "F2" || (combo && e.code === "KeyE")) {
-      if (selectedCount !== 1 || view === "trash") return;
-      e.preventDefault();
-      if (selectedFiles.length === 1) {
-        const file = selectedFiles[0];
-        if (!file.is_owner) return;
-        clearSelection();
-        setRenameTarget({ type: "file", file });
-      } else {
-        const item = selectedFolders[0];
-        if (item.shared || item.trash) return;
-        clearSelection();
-        promptRenameFolder(item.name, folderPathOf(item));
-      }
-      return;
-    }
-
-    if (e.key === "Delete" || e.key === "Backspace") {
-      if (selectedCount === 0) return;
-      e.preventDefault();
-      if (view === "trash") {
-        handleBulkDelete(selectedFiles, selectedFolders.map(folderPathOf));
-      } else {
-        handleBulkTrash(
-          selectedFiles.filter((f) => f.is_owner),
-          selectedFolders.filter((i) => !i.shared).map(folderPathOf)
-        );
-      }
-      clearSelection();
-      return;
-    }
-
-    if (combo && e.code === "KeyS") {
-      if (selectedCount === 0 || view === "trash") return;
-      e.preventDefault();
-      toggleStarMany(selectedFiles.map((f) => f.cid), selectedFolders.map(folderPathOf));
-      clearSelection();
-    }
-  };
-  useEffect(() => {
-    const h = (e) => shortcutRef.current?.(e);
-    document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, []);
+    enabled: !(previewFile || shareFile || detailsOpen || newFolderOpen || renameTarget),
+    view,
+    selection: { files: selectedFiles, folders: selectedFolders, count: selectedCount, clear: clearSelection },
+    folderPathOf,
+    actions: {
+      renameFile: (file) => setRenameTarget({ type: "file", file }),
+      renameFolder: (item) => promptRenameFolder(item.name, folderPathOf(item)),
+      bulkTrash: handleBulkTrash,
+      bulkDelete: handleBulkDelete,
+      toggleStarMany,
+    },
+  });
 
   const openShareForSelection = () => {
     const cids = [
