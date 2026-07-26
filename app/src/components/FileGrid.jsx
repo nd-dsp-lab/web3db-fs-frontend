@@ -1,5 +1,6 @@
 import { Folder, Star } from "lucide-react";
 import { Thumbnail } from "./Thumbnail";
+import { MoreButton, SelectBox } from "./TileControls";
 import { fileVisual, hasThumbnailFor } from "../lib/fileTypes";
 import { useLayout } from "../contexts/LayoutContext";
 
@@ -11,7 +12,7 @@ export default function FileGrid() {
     toggleSelect, navigateInto, openMenuForFolder, openMenuForFile,
     canDragFolder, onFolderDragStart, onFolderDrop, onFileDragStart, setPreviewFile,
     folderKeyOf, folderSharedCount, folderPathOf, starredFolders, starred,
-    SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
+    SharedFolderIcon, sectionLabel, highlightName,
     api, authToken,
   } = useLayout();
   return (

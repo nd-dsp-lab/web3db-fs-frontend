@@ -188,6 +188,39 @@ test("F2 rename dialog moves the file to the new name on submit", () => {
   expect(props.handleMove).toHaveBeenCalledWith("c1", "/renamed.txt");
 });
 
+// A component declared inside AppLayout's render body is a new component
+// *type* on every render, so React cannot match it to the previous tree: it
+// unmounts the old node and mounts a fresh one. The visible symptom is the
+// selection checkbox losing focus the moment anything else re-renders.
+describe("tile controls are not remounted on every render", () => {
+  // Scoped to the row: list view also renders a select-all checkbox in the
+  // header, which is plain JSX in FileList and never had this problem.
+  const rowCheckbox = () => document.querySelector('[data-cid="c1"] input[type="checkbox"]');
+
+  test("the checkbox keeps its DOM node and its focus across a re-render", () => {
+    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    const box = rowCheckbox();
+    box.focus();
+
+    // Hovering a tile sets hoveredKey, which re-renders the whole subtree.
+    fireEvent.mouseEnter(document.querySelector('[data-cid="c1"]'));
+
+    expect(rowCheckbox()).toBe(box);
+    expect(document.activeElement).toBe(box);
+  });
+
+  test("the same holds in list view", () => {
+    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    fireEvent.click(screen.getByTitle(/list view/i));
+    const box = rowCheckbox();
+    box.focus();
+    fireEvent.mouseEnter(document.querySelector('[data-cid="c1"]'));
+
+    expect(rowCheckbox()).toBe(box);
+    expect(document.activeElement).toBe(box);
+  });
+});
+
 // --- drag-and-drop upload ---
 
 describe("drag-and-drop upload", () => {

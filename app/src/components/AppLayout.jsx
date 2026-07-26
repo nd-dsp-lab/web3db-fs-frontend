@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  Folder, Users, MoreVertical, Upload, FolderUp, FolderPlus,
+  Folder, Users, Upload, FolderUp, FolderPlus,
 } from "lucide-react";
 import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
@@ -222,22 +222,6 @@ export default function AppLayout({
   const openDetails = (file) => { setDetailsFile(file); setDetailsOpen(true); };
 
   // --- Reusable bits ---
-  const MoreButton = ({ item, visible }) => (
-    <button
-      onClick={(e) => { e.stopPropagation(); item.type === "file" ? openMenuForFile(e, item) : openMenuForFolder(e, item); }}
-      title="More actions"
-      style={{
-        background: "none", border: "none", cursor: "pointer", color: theme.subText,
-        borderRadius: "50%", width: "30px", height: "30px", display: "flex",
-        alignItems: "center", justifyContent: "center", flexShrink: 0,
-        opacity: visible ? 1 : 0, transition: "opacity 0.1s",
-      }}
-    >
-      <MoreVertical size={17} />
-    </button>
-  );
-
-  // Clickable list-view column header; arrow shows the active sort direction
   // Shared by the New button dropdown and the background right-click menu
   const newMenuItems = [
     { Icon: FolderPlus, label: "New folder", action: () => setNewFolderOpen(true) },
@@ -275,20 +259,6 @@ export default function AppLayout({
     <div style={{ fontSize: "13px", fontWeight: 500, color: theme.subText, margin: "18px 4px 10px" }}>{text}</div>
   );
 
-  // Checkbox used on tiles and rows; visible on hover or while selecting
-  const SelectBox = ({ cid, visible }) => (
-    <input
-      type="checkbox"
-      checked={selected.has(cid)}
-      onChange={() => toggleSelect(cid)}
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        width: "16px", height: "16px", accentColor: "#1A73E8", cursor: "pointer",
-        flexShrink: 0, opacity: visible || selected.has(cid) ? 1 : 0, transition: "opacity 0.1s",
-      }}
-    />
-  );
-
   // Bundle the values the deep view components need, so they can pull from
   // context instead of being threaded long prop chains through AppLayout.
   const layoutCtx = {
@@ -301,7 +271,7 @@ export default function AppLayout({
     canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
     folderKeyOf, folderPathOf, folderSharedCount,
     starred, starredFolders,
-    SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
+    SharedFolderIcon, sectionLabel, highlightName,
     sortBy, sortDir, toggleSort,
     api, authToken,
     // Toolbar
