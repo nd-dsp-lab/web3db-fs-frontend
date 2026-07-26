@@ -4,6 +4,7 @@ import { DOWNLOAD } from "../utils/permissions";
 import { useLayout } from "../contexts/LayoutContext";
 import { isTrashed, joinPath } from "../lib/paths";
 import { DANGER, SHARE, STARRED } from "../lib/theme";
+import { MenuPanel, MenuRow, MenuLabel, MenuDivider } from "./Menu";
 
 // Shortcut hints shown in menus — the keys act on the current selection
 const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
@@ -76,96 +77,85 @@ export default function FileContextMenu({ x, y, file, onClose }) {
 
   const { permissions, is_owner } = file;
 
-  // ---- Styles ----
-  // Colours come from the app theme; only the semantic ones (danger, share,
-  // starred) are literals, since those read correctly on either background.
-  const menuStyle = {
-    position: "fixed", top: y, left: x, zIndex: 9999,
-    background: theme.card, border: `1px solid ${theme.border}`, borderRadius: "6px",
-    boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: "180px",
-    padding: "4px 0", fontSize: "0.875em", color: theme.text,
-  };
-  const itemBase = {
-    padding: "8px 16px", cursor: "pointer", display: "flex",
-    alignItems: "center", gap: "8px", whiteSpace: "nowrap",
-    userSelect: "none", position: "relative",
-  };
-  const dividerStyle = { borderTop: `1px solid ${theme.border}`, margin: "4px 0" };
-
-  const Item = ({ icon, label, onClick, color, disabled = false, shortcut }) => (
-    <div
-      onMouseDown={e => { e.stopPropagation(); if (!disabled) onClick(); }}
-      style={{
-        ...itemBase,
-        color: color || theme.text,
-        opacity: disabled ? 0.5 : 1,
-        cursor: disabled ? "not-allowed" : "pointer",
-      }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = theme.hoverRow; }}
-      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-    >
-      <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>
-      {label}
-      {shortcut && <span style={{ marginLeft: "auto", paddingLeft: "18px", color: theme.subText, fontSize: "0.85em" }}>{shortcut}</span>}
-    </div>
+  // A shortcut hint sits at the row's trailing edge, where the other menus put
+  // their chevrons.
+  const Shortcut = ({ text }) => (
+    <span style={{ color: theme.subText, fontSize: "12px" }}>{text}</span>
   );
+
+  // The star's glyph fills when the file is starred, so it arrives built.
+  const starIcon = (
+    <Star size={16} fill={isStarred ? STARRED : "none"} color={isStarred ? STARRED : theme.subText} />
+  );
+
+  // Every move destination does the same thing with a different folder.
+  const moveTo = async (path) => {
+    onClose();
+    const ok = await confirm({
+      title: "Move file",
+      message: `Move "${file.filename}" to ${path}?`,
+      confirmLabel: "Move",
+    });
+    if (!ok) return;
+    await handleMove(file.cid, joinPath(path, file.filename));
+  };
 
   // Trashed files get a minimal menu: restore or delete forever
   if (inTrash) {
     return (
-      <div ref={menuRef} style={menuStyle}>
-        <Item
-          icon={<RotateCcw size={15} />} label="Restore"
+      <MenuPanel ref={menuRef} x={x} y={y} width={180}>
+        <MenuRow
+          Icon={RotateCcw} label="Restore"
           onClick={() => { onClose(); handleRestore(file); }}
         />
         {(permissions & DOWNLOAD) !== 0 && (
-          <Item icon={<Download size={15} />} label="Download" onClick={() => { downloadFile(file); onClose(); }} />
+          <MenuRow Icon={Download} label="Download" onClick={() => { downloadFile(file); onClose(); }} />
         )}
-        <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); openDetails(file); }} />
-        <div style={dividerStyle} />
-        <Item
-          icon={<Trash2 size={15} />} label="Delete forever" color={DANGER}
+        <MenuRow Icon={Info} label="File details" onClick={() => { onClose(); openDetails(file); }} />
+        <MenuDivider />
+        <MenuRow
+          Icon={Trash2} label="Delete forever" color={DANGER}
           onClick={async () => { onClose(); await handleDelete(file.cid); }}
         />
-      </div>
+      </MenuPanel>
     );
   }
 
   return (
-    <div ref={menuRef} style={menuStyle}>
+    <MenuPanel ref={menuRef} x={x} y={y} width={180}>
 
       {/* DOWNLOAD */}
       {(permissions & DOWNLOAD) !== 0 && (
-        <Item icon={<Download size={15} />} label="Download" onClick={() => { downloadFile(file); onClose(); }} />
+        <MenuRow Icon={Download} label="Download" onClick={() => { downloadFile(file); onClose(); }} />
       )}
 
       {/* FILE DETAILS */}
-      <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); openDetails(file); }} />
+      <MenuRow Icon={Info} label="File details" onClick={() => { onClose(); openDetails(file); }} />
 
       {/* STAR — non-owners keep it top-level (no Organize menu without move rights) */}
       {!is_owner && (
-        <Item
-          icon={<Star size={15} fill={isStarred ? STARRED : "none"} color={isStarred ? STARRED : undefined} />}
+        <MenuRow
+          icon={starIcon}
           label={isStarred ? "Remove from starred" : "Add to starred"}
-          shortcut={SHORTCUTS.star}
+          right={<Shortcut text={SHORTCUTS.star} />}
           onClick={() => { toggleStar(file.cid); onClose(); }}
         />
       )}
 
       {/* RENAME — owner only; a move within the same folder */}
       {is_owner && (
-        <Item
-          icon={<Pencil size={15} />} label="Rename" shortcut={SHORTCUTS.rename}
+        <MenuRow
+          Icon={Pencil} label="Rename" right={<Shortcut text={SHORTCUTS.rename} />}
           onClick={() => { onClose(); promptRenameFile(file); }}
         />
       )}
 
-      <div style={dividerStyle} />
+      <MenuDivider />
 
       {/* SHARE — owner only; opens the share modal (add + revoke access) */}
       {is_owner && (
-        <Item
-          icon={<Share2 size={15} />} label="Share" color={SHARE}
+        <MenuRow
+          Icon={Share2} label="Share" color={SHARE}
           onClick={() => { onClose(); setShareFile(file); }}
         />
       )}
@@ -177,88 +167,58 @@ export default function FileContextMenu({ x, y, file, onClose }) {
           onMouseEnter={() => setShowOrganize(true)}
           onMouseLeave={() => setShowOrganize(false)}
         >
-          <div
-            style={{ ...itemBase, justifyContent: "space-between" }}
-            onMouseEnter={e => { e.currentTarget.style.background = theme.hoverRow; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
-          >
-            <span style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <span style={{ width: "16px", display: "flex", alignItems: "center", justifyContent: "center" }}><FolderInput size={15} /></span>
-              Organize
-            </span>
-            <ChevronRight size={14} color={theme.subText} />
-          </div>
+          <MenuRow
+            Icon={FolderInput} label="Organize"
+            right={<ChevronRight size={14} color={theme.subText} />}
+          />
 
           {showOrganize && (
-            <div style={{
-              position: "absolute", top: 0, left: "100%",
-              background: theme.card, border: `1px solid ${theme.border}`, borderRadius: "6px",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.15)", minWidth: "200px",
-              maxHeight: "260px", overflowY: "auto", padding: "4px 0", zIndex: 10000,
-            }}>
-              <Item
-                icon={<Star size={15} fill={isStarred ? STARRED : "none"} color={isStarred ? STARRED : undefined} />}
+            // Flies out from the parent row rather than the viewport, so it
+            // overrides the panel's fixed positioning.
+            <MenuPanel
+              width={200}
+              style={{ position: "absolute", top: 0, left: "100%", maxHeight: "260px", overflowY: "auto", zIndex: 10000 }}
+            >
+              <MenuRow
+                icon={starIcon}
                 label={isStarred ? "Remove from starred" : "Add to starred"}
-                shortcut={SHORTCUTS.star}
+                right={<Shortcut text={SHORTCUTS.star} />}
                 onClick={() => { toggleStar(file.cid); onClose(); }}
               />
-              <div style={dividerStyle} />
-              <div style={{ padding: "4px 16px", fontSize: "0.8em", color: theme.subText }}>Move to</div>
+              <MenuDivider />
+              <MenuLabel>Move to</MenuLabel>
 
               {currentPath !== "/" && (
-                <div
-                  onMouseDown={async e => {
-                    e.stopPropagation();
-                    onClose();
-                    const newPath = joinPath("/", file.filename);
-                    const ok = await confirm({ title: "Move file", message: `Move "${file.filename}" to /?`, confirmLabel: "Move" });
-                    if (!ok) return;
-                    await handleMove(file.cid, newPath);
-                  }}
-                  style={itemBase}
-                  onMouseEnter={e => e.currentTarget.style.background = theme.hoverRow}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                >
-                  <Folder size={14} color={theme.subText} /> /
-                </div>
+                <MenuRow
+                  Icon={Folder} iconSize={14} label="/"
+                  onClick={() => moveTo("/")}
+                />
               )}
 
               {folders.length === 0 && currentPath === "/" && (
-                <div style={{ ...itemBase, color: theme.subText, opacity: 0.7, cursor: "default" }}>No other folders</div>
+                <MenuLabel>No other folders</MenuLabel>
               )}
 
               {folders.map(({ label, path }) => (
-                <div
-                  key={path}
-                  onMouseDown={async e => {
-                    e.stopPropagation();
-                    onClose();
-                    const newPath = joinPath(path, file.filename);
-                    const ok = await confirm({ title: "Move file", message: `Move "${file.filename}" to ${path}?`, confirmLabel: "Move" });
-                    if (!ok) return;
-                    await handleMove(file.cid, newPath);
-                  }}
-                  style={itemBase}
-                  onMouseEnter={e => e.currentTarget.style.background = theme.hoverRow}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                >
-                  <Folder size={14} color={theme.subText} /> {label}
-                </div>
+                <MenuRow
+                  key={path} Icon={Folder} iconSize={14} label={label}
+                  onClick={() => moveTo(path)}
+                />
               ))}
-            </div>
+            </MenuPanel>
           )}
         </div>
       )}
 
-      <div style={dividerStyle} />
+      <MenuDivider />
 
       {/* MOVE TO TRASH — owner only; the wallet signature acts as the confirm */}
       {is_owner && (
-        <Item
-          icon={<Trash2 size={15} />} label="Move to trash" color={DANGER} shortcut={SHORTCUTS.trash}
+        <MenuRow
+          Icon={Trash2} label="Move to trash" color={DANGER} right={<Shortcut text={SHORTCUTS.trash} />}
           onClick={async () => { onClose(); await handleTrash(file); }}
         />
       )}
-    </div>
+    </MenuPanel>
   );
 }

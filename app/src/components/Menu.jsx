@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { useLayout } from "../contexts/LayoutContext";
 
 // The popup menus (background, selection, folder, and the sidebar's New menu)
@@ -6,10 +7,14 @@ import { useLayout } from "../contexts/LayoutContext";
 //
 // Both read the theme from context, so callers only describe content.
 
-export function MenuPanel({ x, y, width = 200, style, children }) {
+// Takes a ref so a caller can measure the panel and nudge it back on-screen.
+export const MenuPanel = forwardRef(function MenuPanel(
+  { x, y, width = 200, style, children }, ref,
+) {
   const { theme } = useLayout();
   return (
     <div
+      ref={ref}
       // Menus sit above the content area, whose mousedown starts a rubber-band
       // selection; without this, opening one would begin a drag behind it.
       onMouseDown={(e) => e.stopPropagation()}
@@ -23,7 +28,7 @@ export function MenuPanel({ x, y, width = 200, style, children }) {
       {children}
     </div>
   );
-}
+});
 
 // A label above a group of rows (e.g. "3 selected").
 export function MenuLabel({ children }) {
@@ -35,14 +40,24 @@ export function MenuLabel({ children }) {
   );
 }
 
+// Separates groups of rows.
+export function MenuDivider() {
+  const { theme } = useLayout();
+  return <div style={{ borderTop: `1px solid ${theme.border}`, margin: "4px 0" }} />;
+}
+
 // `right` puts a trailing element (a shortcut hint, a submenu chevron) at the
 // far edge. Without it the row is icon + label, which is the common case and
 // the markup the simpler menus already had.
-export function MenuRow({ Icon, label, color, right, iconSize = 16, onClick }) {
+//
+// `icon` takes an already-built element for the rows that need to style the
+// glyph themselves (the star fills when the file is starred); `Icon` takes the
+// component and is the shorter form everything else uses.
+export function MenuRow({ Icon, icon, label, color, right, iconSize = 16, onClick }) {
   const { theme } = useLayout();
   const content = (
     <>
-      <Icon size={iconSize} color={color || theme.subText} /> {label}
+      {icon || <Icon size={iconSize} color={color || theme.subText} />} {label}
     </>
   );
   return (

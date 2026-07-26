@@ -65,22 +65,22 @@ describe("an owned file", () => {
   });
 
   test("Download, Rename and Share route to their handlers", () => {
-    // FileContextMenu items act on mouseDown (so the menu's outside-click
-    // close on mousedown doesn't beat the selection)
+    // Rows act on click, like every other menu. The panel swallows mousedown,
+    // so the outside-click close never sees a press on a row of its own menu.
     const menu = setup();
-    fireEvent.mouseDown(screen.getByText("Download"));
+    fireEvent.click(screen.getByText("Download"));
     expect(menu.downloadFile).toHaveBeenCalledWith(menu.file);
 
-    fireEvent.mouseDown(screen.getByText("Rename"));
+    fireEvent.click(screen.getByText("Rename"));
     expect(menu.promptRenameFile).toHaveBeenCalledWith(menu.file);
 
-    fireEvent.mouseDown(screen.getByText("Share"));
+    fireEvent.click(screen.getByText("Share"));
     expect(menu.setShareFile).toHaveBeenCalledWith(menu.file);
   });
 
   test("Move to trash trashes the file", () => {
     const menu = setup();
-    fireEvent.mouseDown(screen.getByText("Move to trash"));
+    fireEvent.click(screen.getByText("Move to trash"));
     expect(menu.handleTrash).toHaveBeenCalledWith(menu.file);
   });
 
@@ -95,10 +95,10 @@ describe("a trashed file", () => {
     const menu = setup({ file: trashed() });
     expect(screen.queryByText("Move to trash")).not.toBeInTheDocument();
 
-    fireEvent.mouseDown(screen.getByText("Restore"));
+    fireEvent.click(screen.getByText("Restore"));
     expect(menu.handleRestore).toHaveBeenCalledWith(menu.file);
 
-    fireEvent.mouseDown(screen.getByText("Delete forever"));
+    fireEvent.click(screen.getByText("Delete forever"));
     expect(menu.handleDelete).toHaveBeenCalledWith("c1");
   });
 });
@@ -106,7 +106,7 @@ describe("a trashed file", () => {
 describe("a file shared to me", () => {
   test("keeps star top-level and has no owner actions", () => {
     const menu = setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, permissions: 0x5 } });
-    fireEvent.mouseDown(screen.getByText("Add to starred"));
+    fireEvent.click(screen.getByText("Add to starred"));
     expect(menu.toggleStar).toHaveBeenCalledWith("c1");
     expect(screen.queryByText("Move to trash")).not.toBeInTheDocument();
   });
@@ -125,7 +125,9 @@ describe("theming", () => {
     const menu = menuOf("Download");
 
     expect(menu).toHaveStyle({ backgroundColor: DARK.card });
-    expect(menu).toHaveStyle({ color: DARK.text });
+    // Text colour lives on the row, which is what carries the label.
+    expect(screen.getByText("Download").closest("div[style*='cursor: pointer']"))
+      .toHaveStyle({ color: DARK.text });
   });
 
   test("light and dark produce different surfaces", () => {
@@ -196,7 +198,7 @@ describe("moving via the Organize submenu", () => {
   test("moves the file into the chosen folder, after confirming", async () => {
     const menu = setup({ fileTree: tree, currentPath: "/" });
     fireEvent.mouseEnter(screen.getByText("Organize"));
-    fireEvent.mouseDown(screen.getByText("/Docs"));
+    fireEvent.click(screen.getByText("/Docs"));
     await vi.waitFor(() => expect(menu.handleMove).toHaveBeenCalled());
 
     expect(menu.confirm).toHaveBeenCalled();
@@ -207,7 +209,7 @@ describe("moving via the Organize submenu", () => {
   test("moving to the root builds a single-slash path", async () => {
     const menu = setup({ fileTree: tree, currentPath: "/Docs" });
     fireEvent.mouseEnter(screen.getByText("Organize"));
-    fireEvent.mouseDown(screen.getByText("/", { selector: "div" }));
+    fireEvent.click(screen.getByText("/", { selector: "div" }));
     await vi.waitFor(() => expect(menu.handleMove).toHaveBeenCalled());
 
     expect(menu.handleMove).toHaveBeenCalledWith("c1", "/a.pdf");
@@ -218,7 +220,7 @@ describe("moving via the Organize submenu", () => {
       fileTree: tree, currentPath: "/", confirm: vi.fn().mockResolvedValue(false),
     });
     fireEvent.mouseEnter(screen.getByText("Organize"));
-    fireEvent.mouseDown(screen.getByText("/Docs"));
+    fireEvent.click(screen.getByText("/Docs"));
     await vi.waitFor(() => expect(menu.confirm).toHaveBeenCalled());
 
     expect(menu.handleMove).not.toHaveBeenCalled();
