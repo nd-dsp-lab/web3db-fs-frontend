@@ -25,6 +25,7 @@ import { useContextMenus } from "../hooks/useContextMenus";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
+import { useWorkspace } from "../contexts/WorkspaceContext";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
 // out in the tile's background color (lucide has no combined icon)
@@ -41,17 +42,19 @@ const SharedFolderIcon = ({ size = 20, color, badge }) => (
 );
 
 
-export default function AppLayout({
-  account, authToken, connectWallet, disconnectWallet, displayItems, currentPath, setCurrentPath,
-  uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleMoveFolder, handleTrashFolder, handleDelete, handleDeleteFolder, handleMove,
-  handleTrash, handleRestore, handleDropUpload,
-  handleShare, handleUnshare, handleShareCids, handleUnshareCids,
-  handleRestoreFolder, handleDeleteFolderForever,
-  folderCidsOf, folderStatsOf, fileTree, api,
-  view, setView, searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope, darkMode, toggleTheme, user,
-  starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, storageQuota, toast,
-  handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove, confirm,
-}) {
+export default function AppLayout() {
+  // Everything App owns arrives through context and is republished wholesale
+  // in layoutCtx below; only what AppLayout itself reads is destructured here.
+  const workspace = useWorkspace();
+  const {
+    account, authToken, api, displayItems, currentPath, setCurrentPath,
+    uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleMoveFolder, handleMove,
+    handleDropUpload, handleShare, handleUnshare, handleShareCids, handleUnshareCids,
+    folderCidsOf, folderStatsOf,
+    view, setView, searchQuery, setSearchQuery, darkMode,
+    starred, toggleStarMany, starredFolders, toast,
+    handleBulkTrash, handleBulkDelete, handleBulkMove, confirm,
+  } = workspace;
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
@@ -263,8 +266,11 @@ export default function AppLayout({
 
   // Bundle the values the deep view components need, so they can pull from
   // context instead of being threaded long prop chains through AppLayout.
+  // Everything App owns rides along unchanged — the view components see one
+  // context, not two, so which layer a value came from stays their business.
   const layoutCtx = {
-    theme, view,
+    ...workspace,
+    theme,
     folders, fileItems,
     hoveredKey, setHoveredKey,
     selected, setSelected, toggleSelect, someSelected, selectedCount,
@@ -272,32 +278,23 @@ export default function AppLayout({
     openMenuForFile, openMenuForFolder,
     canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
     folderKeyOf, folderPathOf, folderSharedCount,
-    starred, starredFolders,
     SharedFolderIcon, sectionLabel, highlightName,
     sortBy, sortDir, toggleSort,
-    api, authToken,
     // Toolbar
     selectedFiles, selectedFolders, clearSelection, ownedSelection,
-    toggleStarMany, openShareForSelection, downloadSelection,
-    handleBulkRestore, handleBulkDelete, handleBulkTrash,
-    searchQuery, crumbs, crumbPath, currentPath, setCurrentPath,
+    openShareForSelection, downloadSelection,
+    crumbs, crumbPath,
     dropHover, dropUnhover, onInternalDropTo,
-    displayItems, handleDeleteFolder, viewMode, setViewMode,
+    viewMode, setViewMode,
     detailsOpen, setDetailsOpen,
-    searchType, setSearchType, searchScope, setSearchScope,
-    newMenuItems, confirm,
+    newMenuItems,
     // FolderMenu
-    fileTree, toggleStarFolder, folderCidsOf,
     folderOrganizeOpen, setFolderOrganizeOpen,
     downloadFolder, openDetails, setShareFile, promptRenameFolder, promptRenameFile,
     // FileContextMenu
-    downloadFile, toggleStar, handleDelete, handleMove, handleTrash, handleRestore,
-    handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
+    downloadFile,
     // Sidebar
-    setView, setSearchQuery, isNewMenuOpen, setIsNewMenuOpen,
-    storageUsed, storageQuota,
-    // Header
-    darkMode, toggleTheme, account, connectWallet, disconnectWallet, user,
+    isNewMenuOpen, setIsNewMenuOpen,
   };
 
   return (

@@ -31,9 +31,14 @@ vi.mock("./lib/api", () => ({
   }),
 }));
 
-vi.mock("./components/AppLayout", () => ({
-  default: (props) => { mockCapture.props = props; return null; },
-}));
+// App hands the bundle down through WorkspaceContext, so the sink reads the
+// context value instead of props — same assertions, one layer over.
+vi.mock("./components/AppLayout", async () => {
+  const { useWorkspace } = await import("./contexts/WorkspaceContext");
+  return {
+    default: function AppLayoutStub() { mockCapture.props = useWorkspace(); return null; },
+  };
+});
 
 const ADDR = "0x1A28b19f6d2ea1A05F9eFFbcCcbF7E9571877981";
 

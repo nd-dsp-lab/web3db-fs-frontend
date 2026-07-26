@@ -13,6 +13,7 @@ import { useStarred } from "./hooks/useStarred";
 import { useDisplayItems } from "./hooks/useDisplayItems";
 import { useFileActions } from "./hooks/useFileActions";
 import { useConfirmDialog } from "./hooks/useConfirm";
+import { WorkspaceContext } from "./contexts/WorkspaceContext";
 
 // Set VITE_API_BASE_URL (Amplify env var / app/.env.local). Deliberately no
 // fallback host: Vite inlines this at build time, so a misconfigured build
@@ -277,64 +278,37 @@ function App() {
   }, [api]);
   const storageQuota = diskFree != null ? storageUsed + diskFree : null;
 
+  // What App owns, handed to the tree through context. AppLayout adds its own
+  // layout state on top of this and republishes both as LayoutContext, so the
+  // deep view components still read everything from one place.
+  //
+  // Deliberately not memoized: most entries (displayItems, the file-action
+  // callbacks) are rebuilt on every App render anyway, so a useMemo would
+  // need every one of them as a dependency and still produce a new object.
+  const workspace = {
+    account, authToken, connectWallet, disconnectWallet, user,
+    api, fileTree, displayItems, currentPath, setCurrentPath,
+    uploadFile: handleUpload, handleDropUpload, setUploadMode,
+    handleCreateFolder, handleRenameFolder, handleMoveFolder, handleTrashFolder,
+    handleMove, handleDelete, handleTrash, handleRestore, handleDeleteFolder,
+    handleRestoreFolder, handleDeleteFolderForever,
+    handleShare, handleUnshare, handleShareCids, handleUnshareCids,
+    handleBulkMove, handleBulkTrash, handleBulkRestore, handleBulkDelete,
+    folderCidsOf, folderStatsOf,
+    view, setView,
+    searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope,
+    darkMode, toggleTheme,
+    starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder,
+    storageUsed, storageQuota,
+    toast, confirm,
+  };
+
   return (
     <>
     <ToastStack toasts={toasts} dismiss={dismissToast} darkMode={darkMode} />
-    <AppLayout
-      account={account}
-      authToken={authToken}
-      connectWallet={connectWallet}
-      disconnectWallet={disconnectWallet}
-      displayItems={displayItems}
-      currentPath={currentPath}
-      setCurrentPath={setCurrentPath}
-      uploadFile={handleUpload}
-      handleDropUpload={handleDropUpload}
-      setUploadMode={setUploadMode}
-      handleCreateFolder={handleCreateFolder}
-      handleRenameFolder={handleRenameFolder}
-      handleMoveFolder={handleMoveFolder}
-      handleBulkMove={handleBulkMove}
-      handleTrashFolder={handleTrashFolder}
-      handleMove={handleMove}
-      handleDelete={handleDelete}
-      handleTrash={handleTrash}
-      handleRestore={handleRestore}
-      handleDeleteFolder={handleDeleteFolder}
-      handleShare={handleShare}
-      folderCidsOf={folderCidsOf}
-      folderStatsOf={folderStatsOf}
-      handleShareCids={handleShareCids}
-      handleUnshareCids={handleUnshareCids}
-      handleRestoreFolder={handleRestoreFolder}
-      handleDeleteFolderForever={handleDeleteFolderForever}
-      handleUnshare={handleUnshare}
-      fileTree={fileTree}
-      api={api}
-      view={view}
-      setView={setView}
-      searchQuery={searchQuery}
-      setSearchQuery={setSearchQuery}
-      searchType={searchType}
-      setSearchType={setSearchType}
-      searchScope={searchScope}
-      setSearchScope={setSearchScope}
-      darkMode={darkMode}
-      toggleTheme={toggleTheme}
-      user={user}
-      starred={starred}
-      starredFolders={starredFolders}
-      toggleStarFolder={toggleStarFolder}
-      toggleStar={toggleStar}
-      toggleStarMany={toggleStarMany}
-      storageUsed={storageUsed}
-      storageQuota={storageQuota}
-      toast={toast}
-      handleBulkTrash={handleBulkTrash}
-      handleBulkRestore={handleBulkRestore}
-      handleBulkDelete={handleBulkDelete}
-      confirm={confirm}
-    />
+    <WorkspaceContext.Provider value={workspace}>
+      <AppLayout />
+    </WorkspaceContext.Provider>
     {confirmDialog && (
       <ConfirmModal
         {...confirmDialog.opts}

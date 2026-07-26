@@ -5,7 +5,16 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import AppLayout from "./AppLayout";
+import { WorkspaceContext } from "../contexts/WorkspaceContext";
 import { makeApi } from "../lib/api";
+
+// AppLayout reads what App owns from WorkspaceContext rather than props, so
+// the stub bundle these tests build is supplied as the context value.
+const Layout = (value) => (
+  <WorkspaceContext.Provider value={value}>
+    <AppLayout />
+  </WorkspaceContext.Provider>
+);
 
 // AppLayout is the main shell: it renders Sidebar/Header/Toolbar and the
 // file grid through LayoutContext, owns selection/menu/drag state, and the
@@ -71,23 +80,23 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 test("shows the empty state when there are no items", () => {
-  render(<AppLayout {...makeProps({ displayItems: [] })} />);
+  render(<Layout {...makeProps({ displayItems: [] })} />);
   expect(screen.getByText(/This folder is empty/i)).toBeInTheDocument();
 });
 
 test("empty-state copy is tailored to the Trash view", () => {
-  render(<AppLayout {...makeProps({ displayItems: [], view: "trash" })} />);
+  render(<Layout {...makeProps({ displayItems: [], view: "trash" })} />);
   expect(screen.getByText(/Trash is empty/i)).toBeInTheDocument();
 });
 
 test("renders file and folder names from displayItems", () => {
-  render(<AppLayout {...makeProps({ displayItems: [aFile(), aFolder()] })} />);
+  render(<Layout {...makeProps({ displayItems: [aFile(), aFolder()] })} />);
   expect(screen.getByText("report.txt")).toBeInTheDocument();
   expect(screen.getByText("Docs")).toBeInTheDocument();
 });
 
 test("the New menu reveals the create/upload actions", () => {
-  render(<AppLayout {...makeProps()} />);
+  render(<Layout {...makeProps()} />);
   fireEvent.click(screen.getByRole("button", { name: /^New$/ }));
 
   expect(screen.getByText("New folder")).toBeInTheDocument();
@@ -97,7 +106,7 @@ test("the New menu reveals the create/upload actions", () => {
 
 test("clicking a sidebar view switches to it and resets the path", () => {
   const props = makeProps();
-  render(<AppLayout {...props} />);
+  render(<Layout {...props} />);
   fireEvent.click(screen.getByText("Trash"));
 
   expect(props.setView).toHaveBeenCalledWith("trash");
@@ -107,7 +116,7 @@ test("clicking a sidebar view switches to it and resets the path", () => {
 
 test("Delete key trashes the current selection", () => {
   const props = makeProps({ displayItems: [aFile()] });
-  render(<AppLayout {...props} />);
+  render(<Layout {...props} />);
 
   // select the file via its checkbox, then press Delete
   fireEvent.click(screen.getAllByRole("checkbox")[0]);
@@ -120,14 +129,14 @@ test("Delete key trashes the current selection", () => {
 
 test("Delete does nothing when nothing is selected", () => {
   const props = makeProps({ displayItems: [aFile()] });
-  render(<AppLayout {...props} />);
+  render(<Layout {...props} />);
   fireEvent.keyDown(document, { key: "Delete" });
 
   expect(props.handleBulkTrash).not.toHaveBeenCalled();
 });
 
 test("right-clicking the empty background opens the New/upload menu", () => {
-  render(<AppLayout {...makeProps({ displayItems: [] })} />);
+  render(<Layout {...makeProps({ displayItems: [] })} />);
   // the empty-state sits inside the content area that owns the context menu
   fireEvent.contextMenu(screen.getByText(/This folder is empty/i));
 
@@ -136,7 +145,7 @@ test("right-clicking the empty background opens the New/upload menu", () => {
 });
 
 test("a file grid tile opens the preview on click", () => {
-  render(<AppLayout {...makeProps({ displayItems: [aFile({ filename: "a.png", name: "a.png" })] })} />);
+  render(<Layout {...makeProps({ displayItems: [aFile({ filename: "a.png", name: "a.png" })] })} />);
   const tile = document.querySelector('[data-cid="c1"]');
   expect(tile).toBeTruthy();
   fireEvent.click(tile);
@@ -145,7 +154,7 @@ test("a file grid tile opens the preview on click", () => {
 });
 
 test("right-clicking a file opens its context menu", () => {
-  render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+  render(<Layout {...makeProps({ displayItems: [aFile()] })} />);
   fireEvent.contextMenu(document.querySelector('[data-cid="c1"]'));
 
   expect(screen.getByText("Download")).toBeInTheDocument();
@@ -153,7 +162,7 @@ test("right-clicking a file opens its context menu", () => {
 });
 
 test("F2 opens the rename dialog for the selected file", () => {
-  render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+  render(<Layout {...makeProps({ displayItems: [aFile()] })} />);
   fireEvent.click(screen.getAllByRole("checkbox")[0]);
   fireEvent.keyDown(document, { key: "F2" });
 
@@ -163,7 +172,7 @@ test("F2 opens the rename dialog for the selected file", () => {
 
 test("clicking a folder tile navigates into it", () => {
   const props = makeProps({ displayItems: [aFolder({ name: "Docs" })] });
-  render(<AppLayout {...props} />);
+  render(<Layout {...props} />);
   fireEvent.click(document.querySelector('[data-cid="folder:/Docs"]'));
 
   expect(props.setView).toHaveBeenCalledWith("my-drive");
@@ -171,13 +180,13 @@ test("clicking a folder tile navigates into it", () => {
 });
 
 test("search matches are highlighted in tile names", () => {
-  render(<AppLayout {...makeProps({ displayItems: [aFile({ filename: "report.txt", name: "report.txt" })], searchQuery: "rep" })} />);
+  render(<Layout {...makeProps({ displayItems: [aFile({ filename: "report.txt", name: "report.txt" })], searchQuery: "rep" })} />);
   expect(document.querySelectorAll("mark").length).toBeGreaterThan(0);
 });
 
 test("F2 rename dialog moves the file to the new name on submit", () => {
   const props = makeProps({ displayItems: [aFile()] });
-  render(<AppLayout {...props} />);
+  render(<Layout {...props} />);
   fireEvent.click(screen.getAllByRole("checkbox")[0]);
   fireEvent.keyDown(document, { key: "F2" });
 
@@ -198,7 +207,7 @@ describe("tile controls are not remounted on every render", () => {
   const rowCheckbox = () => document.querySelector('[data-cid="c1"] input[type="checkbox"]');
 
   test("the checkbox keeps its DOM node and its focus across a re-render", () => {
-    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    render(<Layout {...makeProps({ displayItems: [aFile()] })} />);
     const box = rowCheckbox();
     box.focus();
 
@@ -210,7 +219,7 @@ describe("tile controls are not remounted on every render", () => {
   });
 
   test("the same holds in list view", () => {
-    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    render(<Layout {...makeProps({ displayItems: [aFile()] })} />);
     fireEvent.click(screen.getByTitle(/list view/i));
     const box = rowCheckbox();
     box.focus();
@@ -225,7 +234,7 @@ describe("tile controls are not remounted on every render", () => {
 
 describe("drag-and-drop upload", () => {
   test("dragging files in shows the drop overlay", () => {
-    render(<AppLayout {...makeProps({ displayItems: [] })} />);
+    render(<Layout {...makeProps({ displayItems: [] })} />);
     const zone = screen.getByText(/This folder is empty/i);
     fireEvent.dragEnter(zone, { dataTransfer: { types: ["Files"] } });
 
@@ -235,7 +244,7 @@ describe("drag-and-drop upload", () => {
 
   test("dropping plain files hands them to the upload handler", () => {
     const props = makeProps({ displayItems: [] });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     const zone = screen.getByText(/This folder is empty/i);
     const dataTransfer = { types: ["Files"], items: [], files: [new File(["x"], "a.pdf")] };
 
@@ -247,7 +256,7 @@ describe("drag-and-drop upload", () => {
 
   test("dropping outside My Drive is refused with a hint", () => {
     const props = makeProps({ displayItems: [], view: "shared" });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     const zone = screen.getByText(/Nothing shared with you yet/i);
 
     fireEvent.drop(zone, { dataTransfer: { types: ["Files"], items: [], files: [new File(["x"], "a.pdf")] } });
@@ -261,7 +270,7 @@ describe("drag-and-drop upload", () => {
 
 describe("downloads", () => {
   test("downloading a folder hits the zip endpoint", () => {
-    render(<AppLayout {...makeProps({ displayItems: [aFolder()] })} />);
+    render(<Layout {...makeProps({ displayItems: [aFolder()] })} />);
     fireEvent.contextMenu(document.querySelector('[data-cid="folder:/Docs"]'));
     // FolderMenu offers Rename/Download/Share
     expect(screen.getByText("Rename")).toBeInTheDocument();
@@ -288,7 +297,7 @@ describe("multi-select toolbar", () => {
 
   test("bulk trash acts on the whole selection", () => {
     const props = makeProps({ displayItems: twoFiles });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     selectBoth();
     fireEvent.click(screen.getByTitle("Move to trash"));
 
@@ -297,7 +306,7 @@ describe("multi-select toolbar", () => {
   });
 
   test("bulk share opens the share modal for the selection", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    render(<Layout {...makeProps({ displayItems: twoFiles })} />);
     selectBoth();
     fireEvent.click(screen.getByTitle("Share"));
 
@@ -306,7 +315,7 @@ describe("multi-select toolbar", () => {
   });
 
   test("bulk download fetches the selected files", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    render(<Layout {...makeProps({ displayItems: twoFiles })} />);
     selectBoth();
     fireEvent.click(screen.getByTitle("Download"));
 
@@ -314,7 +323,7 @@ describe("multi-select toolbar", () => {
   });
 
   test("details panel shows the multi-selection summary", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    render(<Layout {...makeProps({ displayItems: twoFiles })} />);
     selectBoth();
     fireEvent.click(screen.getByTitle("File details"));
 
@@ -322,7 +331,7 @@ describe("multi-select toolbar", () => {
   });
 
   test("right-clicking within a selection opens the selection menu", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    render(<Layout {...makeProps({ displayItems: twoFiles })} />);
     selectBoth();
     fireEvent.contextMenu(document.querySelector('[data-cid="c1"]'));
 
@@ -339,7 +348,7 @@ describe("internal drag and upload trigger", () => {
     const props = makeProps({
       displayItems: [aFile({ cid: "c1", filename: "a.txt", name: "a.txt", folder_path: "/" }), aFolder({ name: "Docs" })],
     });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
 
     fireEvent.dragStart(document.querySelector('[data-cid="c1"]'));
     fireEvent.drop(document.querySelector('[data-cid="folder:/Docs"]'));
@@ -349,7 +358,7 @@ describe("internal drag and upload trigger", () => {
 
   test("choosing File upload from the New menu arms a single-file upload", () => {
     const props = makeProps();
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     fireEvent.click(screen.getByRole("button", { name: /^New$/ }));
     fireEvent.click(screen.getByText("File upload"));
 
@@ -358,7 +367,7 @@ describe("internal drag and upload trigger", () => {
 
   test("the star shortcut stars the current selection", () => {
     const props = makeProps({ displayItems: [aFile()] });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     fireEvent.click(document.querySelector('[data-cid="c1"]'), { ctrlKey: true });
     fireEvent.keyDown(document, { key: "s", code: "KeyS", metaKey: true, altKey: true });
 
@@ -367,7 +376,7 @@ describe("internal drag and upload trigger", () => {
 
   test("creating a folder from the New menu", () => {
     const props = makeProps();
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     fireEvent.click(screen.getByRole("button", { name: /^New$/ }));
     fireEvent.click(screen.getByText("New folder"));
 
@@ -381,7 +390,7 @@ describe("internal drag and upload trigger", () => {
 
   test("F2 renames a selected folder on submit", () => {
     const props = makeProps({ displayItems: [aFolder({ name: "Docs" })] });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     fireEvent.click(screen.getAllByRole("checkbox")[0]); // select the folder
     fireEvent.keyDown(document, { key: "F2" });
 
@@ -394,7 +403,7 @@ describe("internal drag and upload trigger", () => {
 
   test("Delete in the Trash view deletes forever", () => {
     const props = makeProps({ displayItems: [aFile()], view: "trash" });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.keyDown(document, { key: "Delete" });
 
@@ -412,7 +421,7 @@ describe("list view and sorting", () => {
   ];
 
   test("switching to list view renders the table with folders and files", () => {
-    render(<AppLayout {...makeProps({ displayItems: [aFolder({ name: "Docs", shared_with: ["0xAAA"] }), ...twoFiles] })} />);
+    render(<Layout {...makeProps({ displayItems: [aFolder({ name: "Docs", shared_with: ["0xAAA"] }), ...twoFiles] })} />);
     fireEvent.click(screen.getByTitle("list view"));
 
     expect(screen.getByText("Sharing")).toBeInTheDocument();
@@ -424,7 +433,7 @@ describe("list view and sorting", () => {
 
   test("the list select-all checkbox selects every row", () => {
     const props = makeProps({ displayItems: twoFiles });
-    render(<AppLayout {...props} />);
+    render(<Layout {...props} />);
     fireEvent.click(screen.getByTitle("list view"));
 
     // the first checkbox is the thead select-all
@@ -435,7 +444,7 @@ describe("list view and sorting", () => {
   });
 
   test("the sort-direction toggle flips ascending/descending", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoFiles })} />);
+    render(<Layout {...makeProps({ displayItems: twoFiles })} />);
     expect(screen.getByTitle("Ascending")).toBeInTheDocument();
 
     fireEvent.click(screen.getByTitle("Ascending"));
@@ -453,7 +462,7 @@ describe("keyboard shortcuts and the details panel", () => {
   };
 
   test("shortcuts are suppressed while the panel is open", () => {
-    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    render(<Layout {...makeProps({ displayItems: [aFile()] })} />);
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     fireEvent.click(screen.getByTitle("File details"));
 
@@ -462,7 +471,7 @@ describe("keyboard shortcuts and the details panel", () => {
   });
 
   test("shortcuts work again once the panel is closed", () => {
-    render(<AppLayout {...makeProps({ displayItems: [aFile()] })} />);
+    render(<Layout {...makeProps({ displayItems: [aFile()] })} />);
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     openThenCloseDetails();
 
@@ -481,7 +490,7 @@ describe("folders that share a name in a flat view", () => {
   ];
 
   test("grid: hovering one tile does not highlight the other", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
+    render(<Layout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
     const tiles = [
       document.querySelector('[data-cid="folder:/work/docs"]'),
       document.querySelector('[data-cid="folder:/personal/docs"]'),
@@ -496,7 +505,7 @@ describe("folders that share a name in a flat view", () => {
   });
 
   test("both folders render as distinct rows in list view", () => {
-    render(<AppLayout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
+    render(<Layout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
     fireEvent.click(screen.getByTitle("list view"));
 
     expect(document.querySelector('[data-cid="folder:/work/docs"]')).toBeTruthy();
@@ -505,7 +514,7 @@ describe("folders that share a name in a flat view", () => {
 
   test("React is not given duplicate keys", () => {
     const warn = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<AppLayout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
+    render(<Layout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
 
     const dupeWarning = warn.mock.calls.some((c) => String(c[0]).includes("same key"));
     expect(dupeWarning).toBe(false);
