@@ -28,7 +28,7 @@ function makeProps(over = {}) {
     "handleRestoreFolder", "handleDeleteFolderForever", "setView", "setSearchQuery",
     "setSearchType", "setSearchScope", "toggleTheme", "toggleStar", "toggleStarMany",
     "toggleStarFolder", "handleBulkTrash", "handleBulkRestore", "handleBulkDelete", "handleBulkMove",
-  ]) fns[name] = jest.fn();
+  ]) fns[name] = vi.fn();
 
   return {
     ...fns,
@@ -50,8 +50,8 @@ function makeProps(over = {}) {
     storageQuota: 1000,
     folderCidsOf: () => ["c1"],
     folderStatsOf: noopStats,
-    confirm: jest.fn().mockResolvedValue(true),
-    toast: { loading: jest.fn(() => "t"), update: jest.fn(), success: jest.fn(), info: jest.fn(), error: jest.fn() },
+    confirm: vi.fn().mockResolvedValue(true),
+    toast: { loading: vi.fn(() => "t"), update: vi.fn(), success: vi.fn(), info: vi.fn(), error: vi.fn() },
     ...over,
   };
 }
@@ -60,14 +60,14 @@ const aFile = (over = {}) => ({ type: "file", cid: "c1", filename: "report.txt",
 const aFolder = (over = {}) => ({ type: "folder", name: "Docs", ...over });
 
 beforeEach(() => {
-  jest.spyOn(console, "error").mockImplementation(() => {});
-  global.fetch = jest.fn().mockResolvedValue({
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  global.fetch = vi.fn().mockResolvedValue({
     ok: true, blob: async () => new Blob(["x"]), json: async () => ({ shared_with: [] }),
   });
-  global.URL.createObjectURL = jest.fn(() => "blob:x");
-  global.URL.revokeObjectURL = jest.fn();
+  global.URL.createObjectURL = vi.fn(() => "blob:x");
+  global.URL.revokeObjectURL = vi.fn();
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 test("shows the empty state when there are no items", () => {
   render(<AppLayout {...makeProps({ displayItems: [] })} />);

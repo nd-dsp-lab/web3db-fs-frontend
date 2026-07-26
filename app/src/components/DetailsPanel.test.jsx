@@ -10,13 +10,13 @@ const OTHER = "0x3081Acc05169336e7875ad9f896bF6511397809a";
 const THEME = { card: "#fff", subText: "#888", tile: "#eee", text: "#000" };
 
 function mockShared(list) {
-  global.fetch = jest.fn().mockResolvedValue({ json: async () => ({ shared_with: list }) });
+  global.fetch = vi.fn().mockResolvedValue({ json: async () => ({ shared_with: list }) });
 }
 
 function setup(over = {}) {
   const props = {
     file: null, account: ACCOUNT, authToken: "tok", API_BASE_URL: "http://api",
-    onClose: jest.fn(), theme: THEME, toast: { success: jest.fn(), error: jest.fn() },
+    onClose: vi.fn(), theme: THEME, toast: { success: vi.fn(), error: vi.fn() },
     isStarred: false, folderStatsOf: () => ({ fileCount: 0, folderCount: 0, size: 0, earliest: null, latest: null, cids: [], owner: null }),
     ...over,
   };
@@ -26,10 +26,10 @@ function setup(over = {}) {
 
 beforeEach(() => {
   mockShared([]);
-  Object.assign(navigator, { clipboard: { writeText: jest.fn().mockResolvedValue() } });
-  jest.spyOn(console, "error").mockImplementation(() => {}); // benign async act warnings
+  Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue() } });
+  vi.spyOn(console, "error").mockImplementation(() => {}); // benign async act warnings
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 test("with no file it prompts to select one", () => {
   setup({ file: null });

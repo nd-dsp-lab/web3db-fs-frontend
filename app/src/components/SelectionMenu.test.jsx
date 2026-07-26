@@ -16,12 +16,12 @@ function renderMenu(over = {}) {
     selectedFolders: [],
     starred: new Set(), starredFolders: new Set(),
     folderPathOf: (i) => i.fullPath || `/${i.name}`,
-    toggleStarMany: jest.fn(), ownedSelection: true,
-    openShareForSelection: jest.fn(), downloadSelection: jest.fn(), clearSelection: jest.fn(),
-    handleBulkRestore: jest.fn(), handleBulkDelete: jest.fn(), handleBulkTrash: jest.fn(),
+    toggleStarMany: vi.fn(), ownedSelection: true,
+    openShareForSelection: vi.fn(), downloadSelection: vi.fn(), clearSelection: vi.fn(),
+    handleBulkRestore: vi.fn(), handleBulkDelete: vi.fn(), handleBulkTrash: vi.fn(),
     ...over,
   };
-  const setSelMenu = jest.fn();
+  const setSelMenu = vi.fn();
   render(
     <LayoutContext.Provider value={ctx}>
       <SelectionMenu selMenu={{ x: 0, y: 0 }} setSelMenu={setSelMenu} />

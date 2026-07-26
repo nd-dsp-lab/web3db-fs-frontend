@@ -9,15 +9,15 @@ const ACCOUNT = "0x1A28b19f6d2ea1A05F9eFFbcCcbF7E9571877981";
 const OTHER = "0x3081Acc05169336e7875ad9f896bF6511397809a";
 
 function mockShared(list) {
-  global.fetch = jest.fn().mockResolvedValue({ json: async () => ({ shared_with: list }) });
+  global.fetch = vi.fn().mockResolvedValue({ json: async () => ({ shared_with: list }) });
 }
 
 function setup(over = {}) {
   const props = {
     file: { cid: "c1", filename: "a.pdf" },
     account: ACCOUNT, API_BASE_URL: "http://api",
-    onClose: jest.fn(), onShare: jest.fn().mockResolvedValue(), onUnshare: jest.fn().mockResolvedValue(),
-    darkMode: false, confirm: jest.fn().mockResolvedValue(true),
+    onClose: vi.fn(), onShare: vi.fn().mockResolvedValue(), onUnshare: vi.fn().mockResolvedValue(),
+    darkMode: false, confirm: vi.fn().mockResolvedValue(true),
     ...over,
   };
   render(<ShareModal {...props} />);
@@ -26,9 +26,9 @@ function setup(over = {}) {
 
 beforeEach(() => {
   mockShared([]);
-  jest.spyOn(console, "error").mockImplementation(() => {}); // benign async act warnings
+  vi.spyOn(console, "error").mockImplementation(() => {}); // benign async act warnings
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 test("renders the header, input and the owner row", () => {
   setup();

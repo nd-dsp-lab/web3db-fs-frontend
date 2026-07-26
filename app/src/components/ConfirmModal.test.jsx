@@ -6,8 +6,8 @@ import ConfirmModal from "./ConfirmModal";
 // cancels on the button / Escape / backdrop click.
 
 const setup = (over = {}) => {
-  const onConfirm = jest.fn();
-  const onCancel = jest.fn();
+  const onConfirm = vi.fn();
+  const onCancel = vi.fn();
   render(<ConfirmModal message="Delete this file?" title="Delete forever" onConfirm={onConfirm} onCancel={onCancel} {...over} />);
   return { onConfirm, onCancel };
 };

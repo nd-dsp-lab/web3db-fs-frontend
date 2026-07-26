@@ -6,9 +6,9 @@ import { makeApi, NGROK_HEADER } from "./api";
 const BASE = "https://backend.example";
 
 beforeEach(() => {
-  global.fetch = jest.fn().mockResolvedValue({ ok: true });
+  global.fetch = vi.fn().mockResolvedValue({ ok: true });
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => vi.restoreAllMocks());
 
 test("url() binds the base URL to a path", () => {
   const api = makeApi(BASE);
