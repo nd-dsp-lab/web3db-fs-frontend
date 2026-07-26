@@ -15,14 +15,22 @@ export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) 
     if (!authToken) return; // wait for download auth before requesting
     let cancelled = false;
     fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } })
-      .then((r) => (r.ok && r.headers.get("content-type")?.startsWith("image/") ? r.blob() : Promise.reject()))
+      .then((r) => {
+        if (r.ok && r.headers.get("content-type")?.startsWith("image/")) return r.blob();
+        // 401/403 mean the token was stale or not yet valid, which a re-auth
+        // fixes; caching those would leave a whole grid of fallback icons for
+        // the rest of the session. Anything else: this cid has no thumbnail.
+        const permanent = r.status !== 401 && r.status !== 403;
+        return Promise.reject(Object.assign(new Error("no thumbnail"), { permanent }));
+      })
       .then((blob) => {
         const url = URL.createObjectURL(blob);
         thumbCache.set(cid, url);
         if (!cancelled) setSrc(url);
       })
-      .catch(() => {
-        thumbCache.set(cid, "failed");
+      .catch((err) => {
+        // A network error rejects without `permanent` — also treated transient
+        if (err?.permanent) thumbCache.set(cid, "failed");
         if (!cancelled) setSrc("failed");
       });
     return () => { cancelled = true; };

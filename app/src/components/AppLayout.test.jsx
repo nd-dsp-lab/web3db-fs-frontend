@@ -436,3 +436,44 @@ describe("keyboard shortcuts and the details panel", () => {
     expect(screen.getByDisplayValue("report.txt")).toBeInTheDocument();
   });
 });
+
+// Starred and search list folders from different parents, so two folders with
+// the same name can appear side by side. Keying them by name made React see
+// duplicate keys and made hover state collide across the two tiles.
+describe("folders that share a name in a flat view", () => {
+  const twoDocs = [
+    aFolder({ name: "docs", fullPath: "/work/docs" }),
+    aFolder({ name: "docs", fullPath: "/personal/docs" }),
+  ];
+
+  test("grid: hovering one tile does not highlight the other", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
+    const tiles = [
+      document.querySelector('[data-cid="folder:/work/docs"]'),
+      document.querySelector('[data-cid="folder:/personal/docs"]'),
+    ];
+    expect(tiles[0]).toBeTruthy();
+    expect(tiles[1]).toBeTruthy();
+
+    fireEvent.mouseEnter(tiles[0]);
+    const hovered = tiles[0].style.backgroundColor;
+    const other = tiles[1].style.backgroundColor;
+    expect(hovered).not.toBe(other);
+  });
+
+  test("both folders render as distinct rows in list view", () => {
+    render(<AppLayout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
+    fireEvent.click(screen.getByTitle("list view"));
+
+    expect(document.querySelector('[data-cid="folder:/work/docs"]')).toBeTruthy();
+    expect(document.querySelector('[data-cid="folder:/personal/docs"]')).toBeTruthy();
+  });
+
+  test("React is not given duplicate keys", () => {
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<AppLayout {...makeProps({ displayItems: twoDocs, view: "starred" })} />);
+
+    const dupeWarning = warn.mock.calls.some((c) => String(c[0]).includes("same key"));
+    expect(dupeWarning).toBe(false);
+  });
+});

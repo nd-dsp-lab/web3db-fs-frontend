@@ -21,8 +21,10 @@ export default function FileGrid() {
           {sectionLabel("Folders")}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "12px" }}>
             {folders.map((item) => {
-              const key = `folder-${item.name}`;
+              // Keyed by path, not name: Starred and search list folders from
+              // different parents, and two of those can share a name.
               const selKey = folderKeyOf(item);
+              const key = selKey;
               const shCount = folderSharedCount(item);
               return (
                 <div

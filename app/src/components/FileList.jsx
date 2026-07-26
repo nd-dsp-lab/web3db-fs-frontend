@@ -58,7 +58,9 @@ export default function FileList() {
       </thead>
       <tbody>
         {[...folders, ...fileItems].map((item) => {
-          const key = `${item.type}-${item.cid || item.name}`;
+          // Folders key by path, not name: Starred and search list folders
+          // from different parents, and two of those can share a name.
+          const key = item.type === "file" ? `file-${item.cid}` : folderKeyOf(item);
           const { Icon, color } = item.type === "file" ? fileVisual(item.filename) : { Icon: Folder, color: theme.subText };
           const sharedCount = Array.isArray(item.shared_with) ? item.shared_with.length : 0;
           const folderShCount = item.type === "folder" ? folderSharedCount(item) : 0;
