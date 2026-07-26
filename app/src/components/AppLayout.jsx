@@ -17,6 +17,7 @@ import FolderMenu from "./FolderMenu";
 import SelectionMenu from "./SelectionMenu";
 import { useSelection } from "../hooks/useSelection";
 import { useDownloads } from "../hooks/useDownloads";
+import { useExternalDropUpload } from "../hooks/useExternalDropUpload";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
@@ -80,78 +81,8 @@ export default function AppLayout({
     };
   }, [isNewMenuOpen]);
 
-  // --- DESKTOP DRAG-AND-DROP UPLOAD ---
-  // External drags carry "Files" in dataTransfer.types; internal tile drags
-  // don't, so the two never conflict. Uploads land in currentPath.
-  const [dragOver, setDragOver] = useState(false);
-  const dragDepth = useRef(0);
-  const isExternalDrag = (e) => e.dataTransfer?.types?.includes("Files");
-
-  const onDragEnter = (e) => {
-    if (!isExternalDrag(e)) return;
-    e.preventDefault();
-    dragDepth.current++;
-    if (view === "my-drive" && !searchQuery) setDragOver(true);
-  };
-  const onDragLeave = (e) => {
-    if (!isExternalDrag(e)) return;
-    dragDepth.current = Math.max(0, dragDepth.current - 1);
-    if (dragDepth.current === 0) setDragOver(false);
-  };
-  const onDragOverContent = (e) => {
-    if (isExternalDrag(e)) e.preventDefault(); // required to allow the drop
-  };
-  // Recursively read a dropped FileSystemEntry (file or directory) into
-  // [{ file, rel }], where rel keeps the folder structure ("docs/sub/a.txt")
-  const readAllEntries = (reader) => new Promise((resolve, reject) => {
-    const all = [];
-    const step = () => reader.readEntries((batch) => {
-      if (!batch.length) return resolve(all);
-      all.push(...batch);
-      step(); // readEntries returns at most ~100 per call
-    }, reject);
-    step();
-  });
-  const collectEntry = async (entry, prefix, out) => {
-    if (entry.isFile) {
-      const file = await new Promise((res, rej) => entry.file(res, rej));
-      out.push({ file, rel: prefix + entry.name });
-    } else if (entry.isDirectory) {
-      const children = await readAllEntries(entry.createReader());
-      for (const child of children) await collectEntry(child, `${prefix}${entry.name}/`, out);
-    }
-  };
-
-  const onExternalDrop = async (e) => {
-    if (!isExternalDrag(e)) return;
-    e.preventDefault();
-    dragDepth.current = 0;
-    setDragOver(false);
-    if (view !== "my-drive" || searchQuery) {
-      toast.info("Switch to My Drive to upload by dropping files");
-      return;
-    }
-    // Grab entries synchronously — dataTransfer.items dies with the event
-    const entries = [...(e.dataTransfer.items || [])]
-      .map((item) => item.webkitGetAsEntry?.())
-      .filter(Boolean);
-    if (!entries.length) {
-      // Browser without the entry API: plain files only
-      const files = [...(e.dataTransfer.files || [])].map((f) => ({ file: f, rel: f.name }));
-      if (files.length) handleDropUpload(files);
-      return;
-    }
-    const out = [];
-    try {
-      for (const entry of entries) await collectEntry(entry, "", out);
-    } catch (err) {
-      console.error("Reading dropped items failed:", err);
-      toast.error("Could not read the dropped folder");
-      return;
-    }
-    if (out.length) handleDropUpload(out);
-    else toast.info("Dropped folder is empty");
-  };
+  const { dragOver, onDragEnter, onDragLeave, onDragOverContent, onExternalDrop } =
+    useExternalDropUpload({ view, searchQuery, toast, handleDropUpload });
 
   // --- BACKGROUND RIGHT-CLICK MENU (New folder / uploads) ---
   // Only in My Drive: uploads and new folders target the current path,
