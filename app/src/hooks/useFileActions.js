@@ -2,6 +2,11 @@ import { ensureSepolia, normalizeTxFields } from "../utils/helpers";
 import { isTrashed, fullPathOf } from "../lib/paths";
 import { TRASH_PREFIX } from "../lib/constants";
 
+// Thrown when the backend declines to prepare a transaction. The response body
+// carries a reason worth logging but nothing worth showing the user verbatim,
+// so reportTxError renders these with fixed wording instead of the raw message.
+class PrepareError extends Error {}
+
 // All on-chain file/folder actions (share, move, rename, trash, restore,
 // delete, bulk variants, upload) plus the sign/verify + error plumbing.
 // Depends on transaction primitives and data from App.
@@ -29,10 +34,33 @@ export function useFileActions({
     return txHash;
   };
 
+  // Every on-chain action is the same three steps: POST to the endpoint that
+  // builds the transaction, sign it, verify the receipt on-chain. Only the
+  // endpoint, the body and the toast wording differ, so they all come through
+  // here. Returns the prepare response — callers read counts and follow-up
+  // transactions off it. `optionalTx` is for endpoints that legitimately have
+  // nothing to sign (deleting a folder that only exists in local state), where
+  // an explicit error field is the only failure signal.
+  const prepareAndSign = async (endpoint, body, tId, { optionalTx = false } = {}) => {
+    const response = await api.post(endpoint, { user_address: account, ...body });
+    const data = await response.json();
+    if (optionalTx ? data.error : !data.transaction) {
+      console.error(`${endpoint} prepare failed:`, data);
+      throw new PrepareError();
+    }
+    if (data.transaction) await signAndVerifyTransaction(data.transaction, tId);
+    return data;
+  };
+
   const reportTxError = (action, err, tId) => {
-    console.error(`${action} error:`, err);
+    const prepare = err instanceof PrepareError;
+    // A prepare failure already logged the response body where it happened;
+    // anything else is a wallet or network error worth logging here.
+    if (!prepare) console.error(`${action} error:`, err);
     const rejected = err?.code === 4001;
-    const msg = rejected ? "Transaction rejected" : `${action} failed: ${err?.message || err?.reason || String(err)}`;
+    const msg = prepare ? `${action} failed. Check console for details.`
+      : rejected ? "Transaction rejected"
+      : `${action} failed: ${err?.message || err?.reason || String(err)}`;
     const type = rejected ? "info" : "error";
     if (tId) toast.update(tId, msg, type);
     else pushToast(msg, type);
@@ -66,14 +94,7 @@ export function useFileActions({
         toAddress = resolved.address;
       }
       tId = toast.loading("Preparing share…");
-      const response = await api.post("/share", { cid, to_address: toAddress, user_address: account });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Share prepare failed:", data);
-        toast.update(tId, "Share failed. Check console for details.", "error");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      await prepareAndSign("/share", { cid, to_address: toAddress }, tId);
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       // Best-effort email notification once the share is on-chain
       if (recipientEmail) {
@@ -99,14 +120,7 @@ export function useFileActions({
     let tId;
     try {
       tId = toast.loading("Revoking access…");
-      const response = await api.post("/unshare", { cid, to_address: toAddress, user_address: account });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Unshare prepare failed:", data);
-        toast.update(tId, "Unshare failed. Check console for details.", "error");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      await prepareAndSign("/unshare", { cid, to_address: toAddress }, tId);
       toast.update(tId, "Access revoked", "success");
       retrieveFiles();
     } catch (err) {
@@ -136,14 +150,7 @@ export function useFileActions({
         toAddress = resolved.address;
       }
       tId = toast.loading(`Sharing ${cids.length} file(s)…`);
-      const response = await api.post("/share-batch", { cids, to_address: toAddress, user_address: account });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Batch share prepare failed:", data);
-        toast.update(tId, "Share failed. Check console for details.", "error");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      await prepareAndSign("/share-batch", { cids, to_address: toAddress }, tId);
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       if (recipientEmail) {
         const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
@@ -165,14 +172,7 @@ export function useFileActions({
     let tId;
     try {
       tId = toast.loading("Revoking access…");
-      const response = await api.post("/unshare-batch", { cids, to_address: toAddress, user_address: account });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Folder unshare prepare failed:", data);
-        toast.update(tId, "Unshare failed. Check console for details.", "error");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      await prepareAndSign("/unshare-batch", { cids, to_address: toAddress }, tId);
       toast.update(tId, "Access revoked", "success");
       retrieveFiles();
     } catch (err) {
@@ -180,17 +180,9 @@ export function useFileActions({
     }
   };
 
-  // Prepare + sign a single move; shared by rename, drag-move, trash,
-  // restore and their bulk variants. Throws on failure — callers own toasts.
-  const moveTx = async (cid, newPath, tId) => {
-    const response = await api.post("/move", { user_address: account, cid, new_path: newPath });
-    const data = await response.json();
-    if (!data.transaction) {
-      console.error("Move prepare failed:", data);
-      throw new Error("Could not prepare the move transaction");
-    }
-    await signAndVerifyTransaction(data.transaction, tId);
-  };
+  // A single move; shared by rename, drag-move, trash and restore. Throws on
+  // failure — callers own the toasts.
+  const moveTx = (cid, newPath, tId) => prepareAndSign("/move", { cid, new_path: newPath }, tId);
 
   const handleMove = async (cid, newPath) => {
     if (!account) return;
@@ -239,14 +231,7 @@ export function useFileActions({
     if (!(await confirm({ title: "Delete forever", message: "Delete this file forever? This cannot be undone.", confirmLabel: "Delete", danger: true }))) return;
     const tId = toast.loading("Deleting…");
     try {
-      const response = await api.post("/delete", { user_address: account, cid });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Delete prepare failed:", data);
-        toast.update(tId, "Delete failed. Check console for details.", "error");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      await prepareAndSign("/delete", { cid }, tId);
       toast.update(tId, "File deleted forever", "success");
       retrieveFiles();
     } catch (err) {
@@ -260,18 +245,10 @@ export function useFileActions({
   const runBatchMove = async (items, label, pathFor) => {
     const tId = toast.loading(`${label} ${items.length} file(s)…`);
     try {
-      const response = await api.post("/move-batch", {
-        user_address: account,
+      const data = await prepareAndSign("/move-batch", {
         cids: items.map((f) => f.cid),
         new_paths: items.map((f) => pathFor(f)),
-      });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Batch move prepare failed:", data);
-        toast.update(tId, `${label} failed. Check console for details.`, "error");
-        return false;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      }, tId);
       toast.update(tId, `${label.replace(/ing/, "ed")} ${data.count} file(s)`, "success");
       retrieveFiles();
       return true;
@@ -390,14 +367,7 @@ export function useFileActions({
     if (!(await confirm({ title: "Delete forever", message: `Permanently delete ${all.length} file(s)? This cannot be undone.`, confirmLabel: "Delete", danger: true }))) return;
     const tId = toast.loading(`Deleting ${all.length} file(s)…`);
     try {
-      const response = await api.post("/delete-batch", { user_address: account, cids: all.map((f) => f.cid) });
-      const data = await response.json();
-      if (!data.transaction) {
-        console.error("Batch delete prepare failed:", data);
-        toast.update(tId, "Delete failed. Check console for details.", "error");
-        return;
-      }
-      await signAndVerifyTransaction(data.transaction, tId);
+      await prepareAndSign("/delete-batch", { cids: all.map((f) => f.cid) }, tId);
       toast.update(tId, `Deleted ${all.length} file(s) forever`, "success");
       retrieveFiles();
     } catch (err) {
@@ -572,18 +542,9 @@ export function useFileActions({
     const isTrashPurge = folderPath === TRASH_PREFIX;
     const tId = toast.loading(isTrashPurge ? "Emptying trash…" : "Deleting folder…");
     try {
-      const response = await api.post("/delete-folder", { folder_path: folderPath, user_address: account });
-      const data = await response.json();
-      if (data.error) {
-        console.error("Delete folder prepare failed:", data);
-        toast.update(tId, "Delete folder failed. Check console for details.", "error");
-        return;
-      }
       // Folders with on-chain files need a signed batch delete; empty
       // folders exist only in local state and have no transaction.
-      if (data.transaction) {
-        await signAndVerifyTransaction(data.transaction, tId);
-      }
+      await prepareAndSign("/delete-folder", { folder_path: folderPath }, tId, { optionalTx: true });
       toast.update(tId, isTrashPurge ? "Trash emptied" : "Folder deleted", "success");
       setEmptyFolders(prev => {
         const next = new Set();

@@ -159,6 +159,28 @@ describe("signAndVerifyTransaction", () => {
     expect(calls.provider).toEqual([]);
     expect(calls.retrieveFiles).toBe(0);
   });
+
+  // Prepare failures travel to the caller's catch as a marker error carrying
+  // no message. If that marker stopped being recognised, the generic branch
+  // would interpolate it and the user would read "Move failed: Error".
+  test("a prepare failure is worded for the user, not stringified", async () => {
+    const { actions, calls } = setup({ responses: { "/move": { error: "not owner" } } });
+    await actions.handleMove("cid1", "/b/a.pdf");
+
+    expect(messages(calls)).toContain("Move failed. Check console for details.");
+  });
+
+  test("the caller's address is attached to every prepared transaction", async () => {
+    const { actions, calls } = setup({ files: [file()] });
+    await actions.handleMove("cid1", "/b/a.pdf");
+    await actions.handleDelete("cid1");
+    await actions.handleShare("cid1", "0xF00", "a.pdf");
+    await actions.handleBulkTrash([file()]);
+
+    const prepares = calls.api.filter((c) => c.path !== "/verify-upload");
+    expect(prepares.length).toBeGreaterThan(0);
+    expect(prepares.filter((c) => c.body.user_address !== ACCOUNT)).toEqual([]);
+  });
 });
 
 // --- trash / restore path arithmetic ---
