@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info } from "lucide-react";
 import { DOWNLOAD } from "../utils/permissions";
+import { useLayout } from "../contexts/LayoutContext";
+import { isTrashed, joinPath } from "../lib/paths";
+import { DANGER, SHARE, STARRED } from "../lib/theme";
 
 // Shortcut hints shown in menus — the keys act on the current selection
 const IS_MAC = typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
@@ -30,27 +33,19 @@ export function collectFolders(node, parentPath = "") {
   return results;
 }
 
-export default function FileContextMenu({
-  x,
-  y,
-  file,
-  theme,
-  fileTree,
-  currentPath,
-  confirm,
-  onClose,
-  onDownload,
-  onShareOpen,
-  onRenameOpen,
-  onDelete,
-  onMove,
-  onTrash,
-  onRestore,
-  onDetails,
-  inTrash,
-  isStarred,
-  onToggleStar,
-}) {
+// Everything but the menu's own position and subject comes from context: the
+// actions here are the same ones the toolbar and the other menus already pull
+// from there, and threading them through AppLayout only obscured that.
+export default function FileContextMenu({ x, y, file, onClose }) {
+  const {
+    theme, fileTree, currentPath, confirm, starred,
+    downloadFile, openDetails, setShareFile, promptRenameFile, toggleStar,
+    handleDelete, handleMove, handleTrash, handleRestore,
+  } = useLayout();
+
+  const inTrash = isTrashed(file);
+  const isStarred = !!starred?.has(file.cid);
+
   const menuRef = useRef(null);
   const [showOrganize, setShowOrganize] = useState(false);
 
@@ -121,16 +116,16 @@ export default function FileContextMenu({
       <div ref={menuRef} style={menuStyle}>
         <Item
           icon={<RotateCcw size={15} />} label="Restore"
-          onClick={() => { onClose(); onRestore(file); }}
+          onClick={() => { onClose(); handleRestore(file); }}
         />
         {(permissions & DOWNLOAD) !== 0 && (
-          <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
+          <Item icon={<Download size={15} />} label="Download" onClick={() => { downloadFile(file); onClose(); }} />
         )}
-        <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); onDetails(file); }} />
+        <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); openDetails(file); }} />
         <div style={dividerStyle} />
         <Item
-          icon={<Trash2 size={15} />} label="Delete forever" color="#d9534f"
-          onClick={async () => { onClose(); await onDelete(file.cid); }}
+          icon={<Trash2 size={15} />} label="Delete forever" color={DANGER}
+          onClick={async () => { onClose(); await handleDelete(file.cid); }}
         />
       </div>
     );
@@ -141,19 +136,19 @@ export default function FileContextMenu({
 
       {/* DOWNLOAD */}
       {(permissions & DOWNLOAD) !== 0 && (
-        <Item icon={<Download size={15} />} label="Download" onClick={() => { onDownload(file); onClose(); }} />
+        <Item icon={<Download size={15} />} label="Download" onClick={() => { downloadFile(file); onClose(); }} />
       )}
 
       {/* FILE DETAILS */}
-      <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); onDetails(file); }} />
+      <Item icon={<Info size={15} />} label="File details" onClick={() => { onClose(); openDetails(file); }} />
 
       {/* STAR — non-owners keep it top-level (no Organize menu without move rights) */}
       {!is_owner && (
         <Item
-          icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
+          icon={<Star size={15} fill={isStarred ? STARRED : "none"} color={isStarred ? STARRED : undefined} />}
           label={isStarred ? "Remove from starred" : "Add to starred"}
           shortcut={SHORTCUTS.star}
-          onClick={() => { onToggleStar(file.cid); onClose(); }}
+          onClick={() => { toggleStar(file.cid); onClose(); }}
         />
       )}
 
@@ -161,7 +156,7 @@ export default function FileContextMenu({
       {is_owner && (
         <Item
           icon={<Pencil size={15} />} label="Rename" shortcut={SHORTCUTS.rename}
-          onClick={() => { onClose(); onRenameOpen(file); }}
+          onClick={() => { onClose(); promptRenameFile(file); }}
         />
       )}
 
@@ -170,8 +165,8 @@ export default function FileContextMenu({
       {/* SHARE — owner only; opens the share modal (add + revoke access) */}
       {is_owner && (
         <Item
-          icon={<Share2 size={15} />} label="Share" color="#00a86b"
-          onClick={() => { onClose(); onShareOpen(file); }}
+          icon={<Share2 size={15} />} label="Share" color={SHARE}
+          onClick={() => { onClose(); setShareFile(file); }}
         />
       )}
 
@@ -202,10 +197,10 @@ export default function FileContextMenu({
               maxHeight: "260px", overflowY: "auto", padding: "4px 0", zIndex: 10000,
             }}>
               <Item
-                icon={<Star size={15} fill={isStarred ? "#F29900" : "none"} color={isStarred ? "#F29900" : undefined} />}
+                icon={<Star size={15} fill={isStarred ? STARRED : "none"} color={isStarred ? STARRED : undefined} />}
                 label={isStarred ? "Remove from starred" : "Add to starred"}
                 shortcut={SHORTCUTS.star}
-                onClick={() => { onToggleStar(file.cid); onClose(); }}
+                onClick={() => { toggleStar(file.cid); onClose(); }}
               />
               <div style={dividerStyle} />
               <div style={{ padding: "4px 16px", fontSize: "0.8em", color: theme.subText }}>Move to</div>
@@ -215,10 +210,10 @@ export default function FileContextMenu({
                   onMouseDown={async e => {
                     e.stopPropagation();
                     onClose();
-                    const newPath = `/${file.filename}`;
+                    const newPath = joinPath("/", file.filename);
                     const ok = await confirm({ title: "Move file", message: `Move "${file.filename}" to /?`, confirmLabel: "Move" });
                     if (!ok) return;
-                    await onMove(file.cid, newPath);
+                    await handleMove(file.cid, newPath);
                   }}
                   style={itemBase}
                   onMouseEnter={e => e.currentTarget.style.background = theme.hoverRow}
@@ -238,10 +233,10 @@ export default function FileContextMenu({
                   onMouseDown={async e => {
                     e.stopPropagation();
                     onClose();
-                    const newPath = `${path}/${file.filename}`;
+                    const newPath = joinPath(path, file.filename);
                     const ok = await confirm({ title: "Move file", message: `Move "${file.filename}" to ${path}?`, confirmLabel: "Move" });
                     if (!ok) return;
-                    await onMove(file.cid, newPath);
+                    await handleMove(file.cid, newPath);
                   }}
                   style={itemBase}
                   onMouseEnter={e => e.currentTarget.style.background = theme.hoverRow}
@@ -260,8 +255,8 @@ export default function FileContextMenu({
       {/* MOVE TO TRASH — owner only; the wallet signature acts as the confirm */}
       {is_owner && (
         <Item
-          icon={<Trash2 size={15} />} label="Move to trash" color="#d9534f" shortcut={SHORTCUTS.trash}
-          onClick={async () => { onClose(); await onTrash(file); }}
+          icon={<Trash2 size={15} />} label="Move to trash" color={DANGER} shortcut={SHORTCUTS.trash}
+          onClick={async () => { onClose(); await handleTrash(file); }}
         />
       )}
     </div>

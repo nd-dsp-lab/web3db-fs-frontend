@@ -1,30 +1,42 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import FileContextMenu, { collectFolders } from "./FileContextMenu";
+import { LayoutContext } from "../contexts/LayoutContext";
+import { TRASH_PREFIX } from "../lib/constants";
+import { DANGER } from "../lib/theme";
 
-// FileContextMenu takes its collaborators as explicit props (no context).
-// The menu shape depends on ownership, the DOWNLOAD permission bit, and
-// whether the file is in the trash.
+// FileContextMenu pulls its collaborators from LayoutContext. The menu shape
+// depends on ownership, the DOWNLOAD permission bit, and whether the file is
+// in the trash -- the last two read off the file itself.
 
 const LIGHT = { card: "#FFFFFF", text: "#1F1F1F", subText: "#5F6368", border: "#E0E3E7", hoverRow: "#F5F8FC" };
 const DARK = { card: "#1E1F20", text: "#E3E3E3", subText: "#9AA0A6", border: "#3C4043", hoverRow: "#2D2E31" };
 
 function setup(over = {}) {
-  const props = {
-    x: 0, y: 0,
-    theme: LIGHT,
-    file: { cid: "c1", filename: "a.pdf", is_owner: true, permissions: 0xFF },
-    fileTree: null, currentPath: "/",
+  const { file, ...rest } = over;
+  const subject = file || { cid: "c1", filename: "a.pdf", is_owner: true, permissions: 0xFF };
+  const ctx = {
+    theme: LIGHT, fileTree: null, currentPath: "/",
     confirm: vi.fn().mockResolvedValue(true),
-    onClose: vi.fn(), onDownload: vi.fn(), onDetails: vi.fn(),
-    onShareOpen: vi.fn(), onRenameOpen: vi.fn(), onDelete: vi.fn(),
-    onMove: vi.fn(), onTrash: vi.fn(), onRestore: vi.fn(),
-    inTrash: false, isStarred: false, onToggleStar: vi.fn(),
-    ...over,
+    starred: new Set(),
+    downloadFile: vi.fn(), openDetails: vi.fn(), setShareFile: vi.fn(),
+    promptRenameFile: vi.fn(), toggleStar: vi.fn(),
+    handleDelete: vi.fn(), handleMove: vi.fn(), handleTrash: vi.fn(), handleRestore: vi.fn(),
+    ...rest,
   };
-  render(<FileContextMenu {...props} />);
-  return props;
+  const onClose = vi.fn();
+  render(
+    <LayoutContext.Provider value={ctx}>
+      <FileContextMenu x={0} y={0} file={subject} onClose={onClose} />
+    </LayoutContext.Provider>
+  );
+  return { ...ctx, file: subject, onClose };
 }
+
+const trashed = (over = {}) => ({
+  cid: "c1", filename: "a.pdf", is_owner: true, permissions: 0xFF,
+  folder_path: TRASH_PREFIX, ...over,
+});
 
 describe("collectFolders", () => {
   test("flattens folder nodes to label/path pairs, skipping root", () => {
@@ -57,19 +69,19 @@ describe("an owned file", () => {
     // close on mousedown doesn't beat the selection)
     const menu = setup();
     fireEvent.mouseDown(screen.getByText("Download"));
-    expect(menu.onDownload).toHaveBeenCalledWith(menu.file);
+    expect(menu.downloadFile).toHaveBeenCalledWith(menu.file);
 
     fireEvent.mouseDown(screen.getByText("Rename"));
-    expect(menu.onRenameOpen).toHaveBeenCalledWith(menu.file);
+    expect(menu.promptRenameFile).toHaveBeenCalledWith(menu.file);
 
     fireEvent.mouseDown(screen.getByText("Share"));
-    expect(menu.onShareOpen).toHaveBeenCalledWith(menu.file);
+    expect(menu.setShareFile).toHaveBeenCalledWith(menu.file);
   });
 
   test("Move to trash trashes the file", () => {
     const menu = setup();
     fireEvent.mouseDown(screen.getByText("Move to trash"));
-    expect(menu.onTrash).toHaveBeenCalledWith(menu.file);
+    expect(menu.handleTrash).toHaveBeenCalledWith(menu.file);
   });
 
   test("Download is hidden without the DOWNLOAD permission bit", () => {
@@ -80,22 +92,22 @@ describe("an owned file", () => {
 
 describe("a trashed file", () => {
   test("offers restore and delete-forever", () => {
-    const menu = setup({ inTrash: true });
+    const menu = setup({ file: trashed() });
     expect(screen.queryByText("Move to trash")).not.toBeInTheDocument();
 
     fireEvent.mouseDown(screen.getByText("Restore"));
-    expect(menu.onRestore).toHaveBeenCalledWith(menu.file);
+    expect(menu.handleRestore).toHaveBeenCalledWith(menu.file);
 
     fireEvent.mouseDown(screen.getByText("Delete forever"));
-    expect(menu.onDelete).toHaveBeenCalledWith("c1");
+    expect(menu.handleDelete).toHaveBeenCalledWith("c1");
   });
 });
 
 describe("a file shared to me", () => {
   test("keeps star top-level and has no owner actions", () => {
-    const menu = setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, permissions: 0x5 }, isStarred: false });
+    const menu = setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, permissions: 0x5 } });
     fireEvent.mouseDown(screen.getByText("Add to starred"));
-    expect(menu.onToggleStar).toHaveBeenCalledWith("c1");
+    expect(menu.toggleStar).toHaveBeenCalledWith("c1");
     expect(screen.queryByText("Move to trash")).not.toBeInTheDocument();
   });
 });
@@ -138,7 +150,77 @@ describe("theming", () => {
   test("the destructive action stays red on both themes", () => {
     setup({ theme: DARK });
     expect(screen.getByText("Move to trash").closest("div[style*='cursor: pointer']"))
-      .toHaveStyle({ color: "#d9534f" });
+      .toHaveStyle({ color: DANGER });
   });
 });
 /* eslint-enable testing-library/no-node-access */
+
+// inTrash and isStarred used to be passed in already computed. They are now
+// derived here, so what they are derived *from* is worth pinning.
+describe("derived state", () => {
+  test("a file under the trash prefix gets the trash menu without being told", () => {
+    setup({ file: trashed() });
+
+    expect(screen.getByText("Restore")).toBeInTheDocument();
+    expect(screen.queryByText("Share")).not.toBeInTheDocument();
+  });
+
+  test("a file in an ordinary folder does not", () => {
+    setup({ file: { cid: "c1", filename: "a.pdf", is_owner: true, permissions: 0xFF, folder_path: "/docs" } });
+
+    expect(screen.queryByText("Restore")).not.toBeInTheDocument();
+    expect(screen.getByText("Move to trash")).toBeInTheDocument();
+  });
+
+  test("the star label follows the starred set", () => {
+    setup({
+      file: { cid: "c1", filename: "a.pdf", is_owner: false, permissions: 0x5 },
+      starred: new Set(["c1"]),
+    });
+    expect(screen.getByText("Remove from starred")).toBeInTheDocument();
+  });
+
+  test("a file missing from the starred set offers to add it", () => {
+    setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, permissions: 0x5 } });
+    expect(screen.getByText("Add to starred")).toBeInTheDocument();
+  });
+});
+
+describe("moving via the Organize submenu", () => {
+  const tree = {
+    type: "folder", name: "/", children: [
+      { type: "folder", name: "Docs", children: [] },
+    ],
+  };
+
+  test("moves the file into the chosen folder, after confirming", async () => {
+    const menu = setup({ fileTree: tree, currentPath: "/" });
+    fireEvent.mouseEnter(screen.getByText("Organize"));
+    fireEvent.mouseDown(screen.getByText("/Docs"));
+    await vi.waitFor(() => expect(menu.handleMove).toHaveBeenCalled());
+
+    expect(menu.confirm).toHaveBeenCalled();
+    expect(menu.handleMove).toHaveBeenCalledWith("c1", "/Docs/a.pdf");
+  });
+
+  // Moving to the root must not produce "//a.pdf".
+  test("moving to the root builds a single-slash path", async () => {
+    const menu = setup({ fileTree: tree, currentPath: "/Docs" });
+    fireEvent.mouseEnter(screen.getByText("Organize"));
+    fireEvent.mouseDown(screen.getByText("/", { selector: "div" }));
+    await vi.waitFor(() => expect(menu.handleMove).toHaveBeenCalled());
+
+    expect(menu.handleMove).toHaveBeenCalledWith("c1", "/a.pdf");
+  });
+
+  test("declining the confirm moves nothing", async () => {
+    const menu = setup({
+      fileTree: tree, currentPath: "/", confirm: vi.fn().mockResolvedValue(false),
+    });
+    fireEvent.mouseEnter(screen.getByText("Organize"));
+    fireEvent.mouseDown(screen.getByText("/Docs"));
+    await vi.waitFor(() => expect(menu.confirm).toHaveBeenCalled());
+
+    expect(menu.handleMove).not.toHaveBeenCalled();
+  });
+});

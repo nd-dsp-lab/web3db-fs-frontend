@@ -98,6 +98,8 @@ export default function AppLayout({
   const promptRenameFolder = (folderName, folderPath) =>
     setRenameTarget({ type: "folder", name: folderName, path: folderPath });
 
+  const promptRenameFile = (file) => setRenameTarget({ type: "file", file });
+
   const navigateInto = (item) => {
     // Shared/trash folders browse within their own views; starred-view and
     // search-result folders navigate back into the drive
@@ -166,7 +168,7 @@ export default function AppLayout({
     selection: { files: selectedFiles, folders: selectedFolders, count: selectedCount, clear: clearSelection },
     folderPathOf,
     actions: {
-      renameFile: (file) => setRenameTarget({ type: "file", file }),
+      renameFile: promptRenameFile,
       renameFolder: (item) => promptRenameFolder(item.name, folderPathOf(item)),
       bulkTrash: handleBulkTrash,
       bulkDelete: handleBulkDelete,
@@ -287,7 +289,9 @@ export default function AppLayout({
     // FolderMenu
     fileTree, toggleStarFolder, folderCidsOf,
     folderOrganizeOpen, setFolderOrganizeOpen,
-    downloadFolder, openDetails, setShareFile, promptRenameFolder,
+    downloadFolder, openDetails, setShareFile, promptRenameFolder, promptRenameFile,
+    // FileContextMenu
+    downloadFile, toggleStar, handleDelete, handleMove, handleTrash, handleRestore,
     handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
     // Sidebar
     setView, setSearchQuery, isNewMenuOpen, setIsNewMenuOpen,
@@ -426,22 +430,7 @@ export default function AppLayout({
           x={contextMenu.x}
           y={contextMenu.y}
           file={contextMenu.file}
-          theme={theme}
-          fileTree={fileTree}
-          currentPath={currentPath}
-          confirm={confirm}
           onClose={closeContextMenu}
-          onDownload={downloadFile}
-          onDetails={openDetails}
-          onShareOpen={(file) => setShareFile(file)}
-          onRenameOpen={(file) => setRenameTarget({ type: "file", file })}
-          onDelete={handleDelete}
-          onMove={handleMove}
-          onTrash={handleTrash}
-          onRestore={handleRestore}
-          inTrash={(contextMenu.file.folder_path || "/").startsWith("/.trash")}
-          isStarred={starred?.has(contextMenu.file.cid)}
-          onToggleStar={toggleStar}
         />
       )}
 
