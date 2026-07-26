@@ -2,8 +2,9 @@ import "@testing-library/jest-dom";
 import { render, screen, cleanup } from "@testing-library/react";
 import { Thumbnail } from "./Thumbnail";
 
-// Thumbnails are fetched rather than set as <img src> because of the ngrok
-// header, and cached at module level so scrolling never refetches. The cache
+// Thumbnails are fetched rather than set as <img src> because the endpoint
+// needs an auth header, and cached at module level so scrolling never
+// refetches. The cache
 // is the delicate part: caching a *failure* is only safe when that failure is
 // about the file, not about the request.
 

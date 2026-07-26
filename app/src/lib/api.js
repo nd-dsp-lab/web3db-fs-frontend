@@ -1,21 +1,18 @@
-// Central fetch helpers. Every request to the backend needs the ngrok
-// skip-warning header, and almost every write is a JSON POST — this keeps
-// that boilerplate in one place. `makeApi(baseUrl)` binds the backend URL.
-
-export const NGROK_HEADER = { "ngrok-skip-browser-warning": "true" };
+// Central fetch helpers. Almost every write is a JSON POST and every call
+// needs the backend's base URL bound to it — this keeps that boilerplate in
+// one place. `makeApi(baseUrl)` binds the backend URL.
 
 export function makeApi(baseUrl) {
   const url = (path) => `${baseUrl}${path}`;
   return {
     url,
-    // GET with the ngrok header (plus any extra, e.g. x-auth-token)
-    get: (path, headers = {}) =>
-      fetch(url(path), { headers: { ...NGROK_HEADER, ...headers } }),
-    // JSON POST — body is serialized, Content-Type + ngrok header attached
+    // GET; headers is for per-call additions, e.g. x-auth-token
+    get: (path, headers = {}) => fetch(url(path), { headers }),
+    // JSON POST — body is serialized, Content-Type attached
     post: (path, body, headers = {}) =>
       fetch(url(path), {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...NGROK_HEADER, ...headers },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify(body),
       }),
   };

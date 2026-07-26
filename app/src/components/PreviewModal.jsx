@@ -50,7 +50,7 @@ export default function PreviewModal({ file, account, authToken, API_BASE_URL, o
         if (!authToken) { setState({ status: "error", message: "Verifying sign-in — reopen in a moment" }); return; }
         const res = await fetch(
           `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`,
-          { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
+          { headers: { "x-auth-token": authToken } }
         );
         if (!res.ok) throw new Error(`Preview failed (${res.status})`);
         const blob = typedBlob(await res.blob(), file.filename);

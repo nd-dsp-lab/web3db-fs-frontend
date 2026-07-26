@@ -5,7 +5,7 @@ export { hasThumbnailFor };
 
 // CID -> object URL (or "failed"); module-level so navigation and re-renders
 // never refetch. Thumbnails are fetched with fetch() rather than <img src>
-// because the ngrok tunnel needs the skip-warning header.
+// because the endpoint is authenticated and <img> cannot send x-auth-token.
 const thumbCache = new Map();
 
 export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) {
@@ -14,7 +14,7 @@ export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) 
     if (thumbCache.has(cid)) { setSrc(thumbCache.get(cid)); return; }
     if (!authToken) return; // wait for download auth before requesting
     let cancelled = false;
-    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } })
+    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "x-auth-token": authToken } })
       .then((r) => {
         if (r.ok && r.headers.get("content-type")?.startsWith("image/")) return r.blob();
         // 401/403 mean the token was stale or not yet valid, which a re-auth

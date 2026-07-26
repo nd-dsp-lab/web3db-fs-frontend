@@ -19,12 +19,12 @@ export default function ShareModal({
       const res = file.folder
         ? await fetch(`${API_BASE_URL}/shared-users-batch`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true", "x-auth-token": authToken },
+            headers: { "Content-Type": "application/json", "x-auth-token": authToken },
             body: JSON.stringify({ cids: file.cids, user_address: account }),
           })
         : await fetch(
             `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`,
-            { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
+            { headers: { "x-auth-token": authToken } }
           );
       const data = await res.json();
       setSharedUsers(data.shared_with || []);

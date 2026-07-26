@@ -75,14 +75,13 @@ describe("sign-in guards", () => {
 });
 
 describe("downloadFile", () => {
-  test("authenticates with the download token and the ngrok header", async () => {
+  test("authenticates with the download token and nothing else", async () => {
     const { downloads, calls } = setup();
     await downloads.downloadFile(file());
 
     const [req] = calls.fetches;
     expect(req.url).toBe(`${BASE}/download/c1/report.txt`);
-    expect(req.headers["x-auth-token"]).toBe("tok");
-    expect(req.headers["ngrok-skip-browser-warning"]).toBe("true");
+    expect(req.headers).toEqual({ "x-auth-token": "tok" });
   });
 
   test("filenames are escaped into the path", async () => {
