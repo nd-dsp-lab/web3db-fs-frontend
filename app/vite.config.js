@@ -29,11 +29,13 @@ export default defineConfig({
       // Raise as coverage rises; never lower to make a build pass.
       // Measure with `npm run test:coverage` on Node 20 (see .nvmrc): v8 and
       // istanbul count functions differently, so these are v8 numbers only.
+      // Floored to whole percents: the branch figure moves by a hundredth
+      // between runs, so an exact pin would fail the build at random.
       thresholds: {
-        statements: 90,
-        branches: 79,
-        functions: 70,
-        lines: 90,
+        statements: 95, // measured 95.67
+        branches: 86,   // measured 86.44
+        functions: 80,  // measured 80.39
+        lines: 95,      // measured 95.67
       },
     },
   },
