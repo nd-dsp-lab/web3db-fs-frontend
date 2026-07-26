@@ -28,7 +28,8 @@
     ],
     "globals": {
       "vi": "readonly",
-      "vitest": "readonly"
+      "vitest": "readonly",
+      "globalThis": "readonly"
     }
   },
   "browserslist": {
