@@ -15,18 +15,17 @@ test("both themes expose exactly the same tokens", () => {
 });
 
 test("every token is a hex colour", () => {
-  for (const theme of [makeTheme(true), makeTheme(false)]) {
-    for (const [name, value] of Object.entries(theme)) {
-      expect(value, name).toMatch(/^#[0-9A-Fa-f]{6}$/);
-    }
-  }
+  const bad = [makeTheme(true), makeTheme(false)].flatMap((theme) =>
+    Object.entries(theme).filter(([, v]) => !/^#[0-9A-Fa-f]{6}$/.test(v)).map(([k, v]) => `${k}=${v}`)
+  );
+  expect(bad).toEqual([]);
 });
 
 test("light and dark differ on every token", () => {
   // A token that is identical in both themes is a sign one side was missed.
   const light = makeTheme(false);
   const dark = makeTheme(true);
-  for (const key of KEYS) expect(dark[key], key).not.toBe(light[key]);
+  expect(KEYS.filter((key) => dark[key] === light[key])).toEqual([]);
 });
 
 test("foreground and background are not the same colour", () => {
@@ -50,9 +49,8 @@ test("dark is dark and light is light", () => {
 
 test("semantic colours are theme-independent and distinct", () => {
   const semantic = { BLUE, DANGER, TRASH, SHARE, STARRED };
-  for (const [name, value] of Object.entries(semantic)) {
-    expect(value, name).toMatch(/^#[0-9A-Fa-f]{6}$/);
-  }
+  const bad = Object.entries(semantic).filter(([, v]) => !/^#[0-9A-Fa-f]{6}$/.test(v)).map(([k]) => k);
+  expect(bad).toEqual([]);
   expect(new Set(Object.values(semantic)).size).toBe(Object.keys(semantic).length);
 });
 

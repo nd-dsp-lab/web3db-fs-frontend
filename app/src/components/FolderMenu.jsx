@@ -1,5 +1,7 @@
 import { RotateCcw, Trash2, Download, Star, Info, UserPlus, Pencil, FolderInput, ChevronRight, Folder } from "lucide-react";
 import { collectFolders, SHORTCUTS } from "./FileContextMenu";
+import { MenuPanel, MenuRow } from "./Menu";
+import { TRASH } from "../lib/theme";
 import { useLayout } from "../contexts/LayoutContext";
 
 // Right-click menu for a folder tile/row. Owned folders get the full set
@@ -14,23 +16,7 @@ export default function FolderMenu({ folderMenu, setFolderMenu }) {
     handleMoveFolder, handleTrashFolder, handleRestoreFolder, handleDeleteFolderForever,
     confirm,
   } = useLayout();
-  const Row = ({ Icon, label, color, onClick, right }) => (
-    <div
-      onClick={onClick}
-      style={{
-        padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center",
-        justifyContent: right ? "space-between" : "flex-start", gap: "12px", fontSize: "14px",
-        color: color || theme.text,
-      }}
-      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
-      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-    >
-      <span style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <Icon size={16} color={color || theme.subText} /> {label}
-      </span>
-      {right}
-    </div>
-  );
+  const Row = MenuRow;
   const Hint = ({ text }) => <span style={{ color: theme.subText, fontSize: "12px" }}>{text}</span>;
 
   const starLabel = starredFolders?.has(folderMenu.path) ? "Remove from starred" : "Add to starred";
@@ -41,7 +27,7 @@ export default function FolderMenu({ folderMenu, setFolderMenu }) {
       return (
         <>
           <Row Icon={RotateCcw} label="Restore" onClick={() => { setFolderMenu(null); handleRestoreFolder(folderMenu.path); }} />
-          <Row Icon={Trash2} label="Delete forever" color="#d9534f" onClick={() => { setFolderMenu(null); handleDeleteFolderForever(folderMenu.path); }} />
+          <Row Icon={Trash2} label="Delete forever" color={TRASH} onClick={() => { setFolderMenu(null); handleDeleteFolderForever(folderMenu.path); }} />
         </>
       );
     }
@@ -113,7 +99,7 @@ export default function FolderMenu({ folderMenu, setFolderMenu }) {
                 </div>
               )}
             </div>
-            <Row Icon={Trash2} label="Move to trash" color="#d9534f" onClick={() => { setFolderMenu(null); handleTrashFolder(folderMenu.path); }} right={<Hint text={SHORTCUTS.trash} />} />
+            <Row Icon={Trash2} label="Move to trash" color={TRASH} onClick={() => { setFolderMenu(null); handleTrashFolder(folderMenu.path); }} right={<Hint text={SHORTCUTS.trash} />} />
           </>
         )}
       </>
@@ -121,15 +107,8 @@ export default function FolderMenu({ folderMenu, setFolderMenu }) {
   };
 
   return (
-    <div
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{
-        position: "fixed", top: folderMenu.y, left: folderMenu.x, width: "180px",
-        backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
-        zIndex: 9999, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
-      }}
-    >
+    <MenuPanel x={folderMenu.x} y={folderMenu.y} width={180}>
       {body()}
-    </div>
+    </MenuPanel>
   );
 }

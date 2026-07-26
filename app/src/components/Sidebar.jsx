@@ -1,6 +1,7 @@
 import { Plus, HardDrive, Users, Clock, Star, Trash2, Cloud } from "lucide-react";
 import { formatBytes } from "../lib/fileTypes";
 import { STORAGE_QUOTA } from "../lib/constants";
+import { MenuPanel, MenuRow } from "./Menu";
 import { useLayout } from "../contexts/LayoutContext";
 
 // Left rail: brand, New menu, view navigation, and the storage indicator.
@@ -56,23 +57,18 @@ export default function Sidebar() {
         </button>
 
         {isNewMenuOpen && (
-          <div style={{
-            position: "absolute", top: "56px", left: "4px", width: "200px",
-            backgroundColor: theme.card, border: `1px solid ${theme.border}`, borderRadius: "8px",
-            zIndex: 100, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", padding: "6px 0",
-          }}>
+          // Anchored under the New button rather than at a pointer position
+          <MenuPanel style={{ position: "absolute", top: "56px", left: "4px", zIndex: 100 }}>
             {newMenuItems.map(({ Icon, label, action }) => (
-              <div
+              <MenuRow
                 key={label}
+                Icon={Icon}
+                label={label}
+                iconSize={17}
                 onClick={() => { action(); setIsNewMenuOpen(false); }}
-                style={{ padding: "10px 18px", cursor: "pointer", display: "flex", alignItems: "center", gap: "12px", fontSize: "14px" }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = theme.hoverRow}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-              >
-                <Icon size={17} color={theme.subText} /> {label}
-              </div>
+              />
             ))}
-          </div>
+          </MenuPanel>
         )}
       </div>
 
