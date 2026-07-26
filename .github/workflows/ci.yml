@@ -18,7 +18,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Single source of truth with local dev. Newer Node exposes a native
+          # localStorage global that shadows jsdom's and breaks the suite.
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: app/package-lock.json
 
