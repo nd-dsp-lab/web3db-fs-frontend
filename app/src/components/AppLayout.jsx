@@ -20,6 +20,7 @@ import { useDownloads } from "../hooks/useDownloads";
 import { useExternalDropUpload } from "../hooks/useExternalDropUpload";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSortedItems } from "../hooks/useSortedItems";
+import { useDragMove } from "../hooks/useDragMove";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
@@ -51,7 +52,6 @@ export default function AppLayout({
   handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove, confirm,
 }) {
   const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
-  const [draggedItem, setDraggedItem] = useState(null); // { type: "file", cid, name, fromPath } | { type: "folder", path }
   const [contextMenu, setContextMenu] = useState(null); // { x, y, file }
   const [bgMenu, setBgMenu] = useState(null); // { x, y } — background right-click menu
   const [folderMenu, setFolderMenu] = useState(null); // { x, y, name } — folder right-click menu
@@ -112,53 +112,6 @@ export default function AppLayout({
     useDownloads({ API_BASE_URL, account, authToken, toast });
 
   const theme = makeTheme(darkMode);
-
-  // --- DRAG AND DROP LOGIC ---
-  // Internal drags move files/folders between folders; drop targets are
-  // folder tiles/rows, breadcrumb segments, and the My Drive nav item.
-  // Dragging an item that's part of the multi-selection drags the whole
-  // selection (Drive behavior); an unselected item drags alone.
-  const onFileDragStart = (file) => {
-    if (selectedCount > 1 && selected.has(file.cid)) { setDraggedItem({ type: "selection" }); return; }
-    setDraggedItem({ type: "file", cid: file.cid, name: file.name, fromPath: currentPath });
-  };
-
-  const onFolderDragStart = (item) => {
-    if (selectedCount > 1 && selected.has(folderKeyOf(item))) { setDraggedItem({ type: "selection" }); return; }
-    setDraggedItem({ type: "folder", path: folderPathOf(item) });
-  };
-
-  // Owned live folders only — no dragging in trash or of folders shared to me
-  const canDragFolder = (item) => !item.shared && !item.trash;
-
-  const onInternalDropTo = async (e, destFolderPath) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!draggedItem || view === "trash") return; // no drag-moves inside Trash
-    const item = draggedItem;
-    setDraggedItem(null);
-    if (item.type === "selection") {
-      await handleBulkMove(
-        selectedFiles.filter((f) => f.is_owner),
-        selectedFolders.filter((i) => !i.shared && !i.trash).map(folderPathOf),
-        destFolderPath
-      );
-      clearSelection();
-    } else if (item.type === "file") {
-      if (item.fromPath === destFolderPath) return; // already there — skip the pointless signature
-      await handleMove(item.cid, joinPath(destFolderPath, item.name));
-    } else {
-      // handleMoveFolder no-ops on same-place and self/descendant drops
-      await handleMoveFolder(item.path, destFolderPath);
-    }
-  };
-
-  const onFolderDrop = (e, targetItem) =>
-    onInternalDropTo(e, folderPathOf(targetItem));
-
-  // Drag-over feedback for breadcrumb / nav drop targets
-  const dropHover = (e) => { if (draggedItem) { e.preventDefault(); e.currentTarget.style.backgroundColor = theme.navActive; } };
-  const dropUnhover = (e) => { e.currentTarget.style.backgroundColor = "transparent"; };
 
   const triggerUpload = (mode) => {
     setUploadMode(mode);
@@ -239,6 +192,19 @@ export default function AppLayout({
   // Multi-select share: owned files + owned folders expanded to their cids,
   // presented through the ShareModal's folder mode as one grantFiles tx.
   const ownedSelection = selectedFiles.every((f) => f.is_owner) && selectedFolders.every((i) => !i.shared);
+  const {
+    onFileDragStart, onFolderDragStart, canDragFolder,
+    onInternalDropTo, onFolderDrop, dropHover, dropUnhover,
+  } = useDragMove({
+    view, currentPath, theme,
+    selection: {
+      files: selectedFiles, folders: selectedFolders,
+      count: selectedCount, has: (key) => selected.has(key), clear: clearSelection,
+    },
+    folderPathOf, folderKeyOf,
+    handleMove, handleMoveFolder, handleBulkMove,
+  });
+
   useKeyboardShortcuts({
     // Gate on what is actually open, not on detailsFile, which lingers
     enabled: !(previewFile || shareFile || detailsOpen || newFolderOpen || renameTarget),
