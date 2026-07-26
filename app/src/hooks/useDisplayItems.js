@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { getFolderContents } from "../utils/helpers";
 import { SEARCH_TYPE_EXTS, TRASH_PREFIX } from "../lib/constants";
-import { isTrashed, fullPathOf } from "../lib/paths";
+import { isTrashed, fullPathOf, joinPath, childPrefix, isUnder } from "../lib/paths";
 
 // Derives the list of items to render for the current view: search results
 // (name + optional type chip + folder scope), or the Shared / Recent /
@@ -27,7 +27,7 @@ export function useDisplayItems({
     if (searchQuery.length > 0) {
       // Search: name match + optional type chip + optional current-folder scope
       const q = searchQuery.toLowerCase();
-      const scopePrefix = currentPath === "/" ? "/" : currentPath + "/";
+      const scopePrefix = childPrefix(currentPath);
       const inScope = (fullPath) => searchScope !== "folder" || fullPath.startsWith(scopePrefix);
       const results = [];
 
@@ -65,7 +65,7 @@ export function useDisplayItems({
       // let currentPath drive navigation just like My Drive. Folder items are
       // tagged shared:true so navigation stays in this view and owner-only
       // actions (rename, trash, share) are suppressed.
-      const prefix = currentPath === "/" ? "/" : currentPath + "/";
+      const prefix = childPrefix(currentPath);
       const folderNames = new Set();
       const fileItems = [];
       for (const f of active.filter((f) => !f.is_owner)) {
@@ -93,7 +93,7 @@ export function useDisplayItems({
         // owned tree — detect them by path prefix and tag shared:true so
         // navigation opens them in the Shared view.
         ...[...starredFolders]
-          .filter((p) => folderExists(p) || active.some((f) => !f.is_owner && fullPathOf(f).startsWith(p + "/")))
+          .filter((p) => folderExists(p) || active.some((f) => !f.is_owner && isUnder(fullPathOf(f), p)))
           .sort()
           .map((p) => ({ type: "folder", name: p.split("/").pop(), fullPath: p, shared: !folderExists(p) })),
         ...active.filter((f) => starred.has(f.cid)).map(asFileItem),
@@ -105,7 +105,7 @@ export function useDisplayItems({
       // into folders like the Shared view, with currentPath as the position
       // inside the trash. Folder items are tagged trash:true so navigation
       // stays here and the menu offers restore/delete-forever.
-      const prefix = TRASH_PREFIX + (currentPath === "/" ? "" : currentPath) + "/";
+      const prefix = TRASH_PREFIX + childPrefix(currentPath);
       const folderNames = new Set();
       const fileItems = [];
       for (const f of files.filter((f) => f.is_owner && isTrashed(f))) {
@@ -119,7 +119,7 @@ export function useDisplayItems({
       return [
         ...[...folderNames].sort().map((n) => ({
           type: "folder", name: n, trash: true,
-          fullPath: (currentPath === "/" ? "" : currentPath) + "/" + n,
+          fullPath: joinPath(currentPath, n),
         })),
         ...fileItems,
       ];

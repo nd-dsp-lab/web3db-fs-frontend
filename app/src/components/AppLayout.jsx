@@ -17,6 +17,7 @@ import FolderMenu from "./FolderMenu";
 import SelectionMenu from "./SelectionMenu";
 import { useSelection } from "../hooks/useSelection";
 import { makeTheme } from "../lib/theme";
+import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
 
 // Drive-style shared-folder icon: folder with a small people glyph punched
@@ -247,8 +248,7 @@ export default function AppLayout({
       clearSelection();
     } else if (item.type === "file") {
       if (item.fromPath === destFolderPath) return; // already there — skip the pointless signature
-      const destination = destFolderPath === "/" ? `/${item.name}` : `${destFolderPath}/${item.name}`;
-      await handleMove(item.cid, destination);
+      await handleMove(item.cid, joinPath(destFolderPath, item.name));
     } else {
       // handleMoveFolder no-ops on same-place and self/descendant drops
       await handleMoveFolder(item.path, destFolderPath);
@@ -282,7 +282,7 @@ export default function AppLayout({
   // Folder items in My Drive only carry a name (path = currentPath + name);
   // in the Starred view they carry their full path directly.
   const folderPathOf = (item) =>
-    item.fullPath || (currentPath === "/" ? `/${item.name}` : `${currentPath}/${item.name}`);
+    item.fullPath || joinPath(currentPath, item.name);
 
   // Shared-folder detection: folders shared *to* me are always shared (-1 =
   // no recipient count); owned folders count as shared when their inherited
@@ -773,8 +773,7 @@ export default function AppLayout({
             } else {
               const f = renameTarget.file;
               const folder = f.folder_path || currentPath || "/";
-              const newPath = folder === "/" ? `/${newName}` : `${folder.replace(/\/+$/, "")}/${newName}`;
-              handleMove(f.cid, newPath);
+              handleMove(f.cid, joinPath(folder.replace(/\/+$/, ""), newName));
             }
           }}
         />

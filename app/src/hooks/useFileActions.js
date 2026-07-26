@@ -1,5 +1,5 @@
 import { ensureSepolia, normalizeTxFields } from "../utils/helpers";
-import { isTrashed, fullPathOf } from "../lib/paths";
+import { isTrashed, fullPathOf, joinPath, parentOf, baseNameOf, isUnder, pruneSubtrees, remapSubtrees } from "../lib/paths";
 import { TRASH_PREFIX } from "../lib/constants";
 
 // Thrown when the backend declines to prepare a transaction. The response body
@@ -264,20 +264,14 @@ export function useFileActions({
   const handleBulkTrash = async (items, folderPaths = []) => {
     const seen = new Set(items.map((f) => f.cid));
     const folderFiles = folderPaths.flatMap((p) =>
-      files.filter((f) => f.is_owner && !isTrashed(f) && !seen.has(f.cid) && fullPathOf(f).startsWith(p + "/"))
+      files.filter((f) => f.is_owner && !isTrashed(f) && !seen.has(f.cid) && isUnder(fullPathOf(f), p))
     );
     folderFiles.forEach((f) => seen.add(f.cid));
     const all = [...items, ...folderFiles];
 
     const dropFolderEntries = () => {
       if (!folderPaths.length) return;
-      setEmptyFolders((prev) => {
-        const next = new Set();
-        for (const p of prev) {
-          if (!folderPaths.some((fp) => p === fp || p.startsWith(fp + "/"))) next.add(p);
-        }
-        return persistEmptyFolders(next);
-      });
+      setEmptyFolders((prev) => persistEmptyFolders(pruneSubtrees(prev, folderPaths)));
       folderPaths.forEach((p) => remapStarredFolders(p));
     };
 
@@ -297,23 +291,17 @@ export function useFileActions({
   // are skipped (moving them would nest a folder inside itself); files
   // already sitting in destFolder stay put.
   const handleBulkMove = async (items, folderPaths, destFolder) => {
-    const okFolders = folderPaths.filter((p) => p !== destFolder && !destFolder.startsWith(p + "/"));
-    const destBaseOf = (p) => {
-      const name = p.slice(p.lastIndexOf("/") + 1);
-      return destFolder === "/" ? `/${name}` : `${destFolder}/${name}`;
-    };
+    const okFolders = folderPaths.filter((p) => p !== destFolder && !isUnder(destFolder, p));
+    const destBaseOf = (p) => joinPath(destFolder, baseNameOf(p));
 
     const looseFiles = items.filter((f) => f.is_owner && (f.folder_path || "/") !== destFolder);
     const seen = new Set(looseFiles.map((f) => f.cid));
-    const moves = looseFiles.map((f) => ({
-      file: f,
-      to: destFolder === "/" ? `/${f.filename}` : `${destFolder}/${f.filename}`,
-    }));
+    const moves = looseFiles.map((f) => ({ file: f, to: joinPath(destFolder, f.filename) }));
     for (const p of okFolders) {
       const base = destBaseOf(p);
       for (const f of files) {
         if (!f.is_owner || isTrashed(f) || seen.has(f.cid)) continue;
-        if (!fullPathOf(f).startsWith(p + "/")) continue;
+        if (!isUnder(fullPathOf(f), p)) continue;
         seen.add(f.cid);
         moves.push({ file: f, to: base + fullPathOf(f).slice(p.length) });
       }
@@ -321,16 +309,9 @@ export function useFileActions({
 
     const rewriteLocal = () => {
       if (!okFolders.length) return;
-      setEmptyFolders((prev) => {
-        const next = new Set();
-        for (const p0 of prev) {
-          const moved = okFolders.find((fp) => p0 === fp || p0.startsWith(fp + "/"));
-          if (moved) next.add(destBaseOf(moved) + p0.slice(moved.length));
-          else next.add(p0);
-        }
-        return persistEmptyFolders(next);
-      });
-      okFolders.forEach((p) => remapStarredFolders(p, destBaseOf(p)));
+      const relocations = okFolders.map((p) => [p, destBaseOf(p)]);
+      setEmptyFolders((prev) => persistEmptyFolders(remapSubtrees(prev, relocations)));
+      relocations.forEach(([from, to]) => remapStarredFolders(from, to));
     };
 
     if (moves.length === 0) {
@@ -345,7 +326,7 @@ export function useFileActions({
 
   // Files in the trash under a logical folder path (path without /.trash)
   const trashedFilesUnder = (folderPath) =>
-    files.filter((f) => f.is_owner && isTrashed(f) && fullPathOf(f).startsWith(TRASH_PREFIX + folderPath + "/"));
+    files.filter((f) => f.is_owner && isTrashed(f) && isUnder(fullPathOf(f), TRASH_PREFIX + folderPath));
 
   // items + whole trash folders expanded to their files — one moveFiles tx
   const handleBulkRestore = (items, folderPaths = []) => {
@@ -401,7 +382,7 @@ export function useFileActions({
     if (isTrashed(f)) {
       setView("trash");
       const logical = fullPathOf(f).slice(TRASH_PREFIX.length);
-      setCurrentPath(logical.slice(0, logical.lastIndexOf("/")) || "/");
+      setCurrentPath(parentOf(logical));
     } else {
       setView(f.is_owner ? "my-drive" : "shared");
       setCurrentPath(f.folder_path || "/");
@@ -498,9 +479,8 @@ export function useFileActions({
     if (uploadMode === "folder") {
       for (const file of inputFiles) {
         const relative = file.webkitRelativePath || file.name;
-        const fullPath = currentPath === "/" ? `/${relative}` : `${currentPath}/${relative}`;
         formData.append("files", file);
-        formData.append("paths", fullPath);
+        formData.append("paths", joinPath(currentPath, relative));
       }
     } else {
       formData.append("file", inputFiles[0]);
@@ -529,9 +509,8 @@ export function useFileActions({
     } else {
       endpoint = "/upload-folder";
       for (const { file, rel } of items) {
-        const fullPath = currentPath === "/" ? `/${rel}` : `${currentPath}/${rel}`;
         formData.append("files", file);
-        formData.append("paths", fullPath);
+        formData.append("paths", joinPath(currentPath, rel));
       }
     }
     await submitUpload(endpoint, formData, items.length, items[0].file.name);
@@ -546,13 +525,7 @@ export function useFileActions({
       // folders exist only in local state and have no transaction.
       await prepareAndSign("/delete-folder", { folder_path: folderPath }, tId, { optionalTx: true });
       toast.update(tId, isTrashPurge ? "Trash emptied" : "Folder deleted", "success");
-      setEmptyFolders(prev => {
-        const next = new Set();
-        for (const p of prev) {
-          if (p !== folderPath && !p.startsWith(folderPath + "/")) next.add(p);
-        }
-        return persistEmptyFolders(next);
-      });
+      setEmptyFolders(prev => persistEmptyFolders(pruneSubtrees(prev, [folderPath])));
       remapStarredFolders(folderPath);
       retrieveFiles();
     } catch (err) {
@@ -562,25 +535,17 @@ export function useFileActions({
 
   // --- FOLDER CREATION ---
   const handleCreateFolder = (name) => {
-    const newPath = currentPath === "/" ? `/${name}` : `${currentPath}/${name}`;
-    setEmptyFolders(prev => persistEmptyFolders(new Set(prev).add(newPath)));
+    setEmptyFolders(prev => persistEmptyFolders(new Set(prev).add(joinPath(currentPath, name))));
   };
 
   // --- FOLDER TRASH ---
   // Move every owned file under the folder to /.trash — one batch tx, one
   // signature. Restorable from the Trash view (per file or multi-select).
   const handleTrashFolder = async (folderPath) => {
-    const dropEmptyEntries = () => setEmptyFolders(prev => {
-      const next = new Set();
-      for (const p of prev) {
-        if (p !== folderPath && !p.startsWith(folderPath + "/")) next.add(p);
-      }
-      return persistEmptyFolders(next);
-    });
+    const dropEmptyEntries = () =>
+      setEmptyFolders(prev => persistEmptyFolders(pruneSubtrees(prev, [folderPath])));
 
-    const affected = files.filter((f) =>
-      f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/")
-    );
+    const affected = files.filter((f) => f.is_owner && !isTrashed(f) && isUnder(fullPathOf(f), folderPath));
     if (affected.length === 0) {
       // Empty folders exist only locally — nothing on-chain to trash
       dropEmptyEntries();
@@ -599,19 +564,10 @@ export function useFileActions({
   // file under it — one moveFiles tx, one signature. Empty folders are
   // local-only: just rewrite their paths in the set.
   const relocateFolder = async (folderPath, newPath, label, doneMsg) => {
-    const rewriteEmptyFolders = () => setEmptyFolders(prev => {
-      const next = new Set();
-      for (const p of prev) {
-        if (p === folderPath) next.add(newPath);
-        else if (p.startsWith(folderPath + "/")) next.add(newPath + p.slice(folderPath.length));
-        else next.add(p);
-      }
-      return persistEmptyFolders(next);
-    });
+    const rewriteEmptyFolders = () =>
+      setEmptyFolders(prev => persistEmptyFolders(remapSubtrees(prev, [[folderPath, newPath]])));
 
-    const affected = files.filter((f) =>
-      f.is_owner && !isTrashed(f) && fullPathOf(f).startsWith(folderPath + "/")
-    );
+    const affected = files.filter((f) => f.is_owner && !isTrashed(f) && isUnder(fullPathOf(f), folderPath));
     if (affected.length === 0) {
       rewriteEmptyFolders();
       remapStarredFolders(folderPath, newPath);
@@ -625,17 +581,15 @@ export function useFileActions({
   };
 
   const handleRenameFolder = (folderPath, newName) => {
-    const parent = folderPath.slice(0, folderPath.lastIndexOf("/"));
-    const newPath = `${parent}/${newName}`;
+    const newPath = joinPath(parentOf(folderPath), newName);
     if (newPath === folderPath) return;
     return relocateFolder(folderPath, newPath, "Renaming", "Folder renamed");
   };
 
   const handleMoveFolder = (folderPath, destFolder) => {
-    const name = folderPath.slice(folderPath.lastIndexOf("/") + 1);
-    const newPath = destFolder === "/" ? `/${name}` : `${destFolder}/${name}`;
+    const newPath = joinPath(destFolder, baseNameOf(folderPath));
     // No-op if already there; refuse moving a folder into itself
-    if (newPath === folderPath || destFolder === folderPath || destFolder.startsWith(folderPath + "/")) return;
+    if (newPath === folderPath || destFolder === folderPath || isUnder(destFolder, folderPath)) return;
     return relocateFolder(folderPath, newPath, "Moving", "Folder moved");
   };
 
