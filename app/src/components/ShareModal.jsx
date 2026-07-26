@@ -3,7 +3,7 @@ import { X, UserPlus, Loader2, Trash2 } from "lucide-react";
 import { makeTheme } from "../lib/theme";
 
 export default function ShareModal({
-  file, account, authToken, API_BASE_URL, onClose, onShare, onUnshare, darkMode, confirm,
+  file, account, authToken, api, onClose, onShare, onUnshare, darkMode, confirm,
 }) {
   const [recipient, setRecipient] = useState("");
   const [sharedUsers, setSharedUsers] = useState([]);
@@ -16,24 +16,14 @@ export default function ShareModal({
     setLoadingList(true);
     try {
       // Folder mode: union of shared users across every file in the folder
-      const res = file.folder
-        ? await fetch(`${API_BASE_URL}/shared-users-batch`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-auth-token": authToken },
-            body: JSON.stringify({ cids: file.cids, user_address: account }),
-          })
-        : await fetch(
-            `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`,
-            { headers: { "x-auth-token": authToken } }
-          );
-      const data = await res.json();
-      setSharedUsers(data.shared_with || []);
+      const target = file.folder ? { cids: file.cids, account } : { cid: file.cid };
+      setSharedUsers(await api.sharedUsers(target, authToken));
     } catch {
       setSharedUsers([]);
     } finally {
       setLoadingList(false);
     }
-  }, [API_BASE_URL, file.cid, file.folder, file.cids, account, authToken]);
+  }, [api, file.cid, file.folder, file.cids, account, authToken]);
 
   useEffect(() => { fetchSharedUsers(); }, [fetchSharedUsers]);
 

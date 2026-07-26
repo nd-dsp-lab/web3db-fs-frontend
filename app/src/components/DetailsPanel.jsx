@@ -8,7 +8,7 @@ const short = (addr = "") => (addr ? `${addr.slice(0, 6)}...${addr.slice(-4)}` :
 // Right-side details card, Drive style. Shows metadata for one file, or
 // aggregate stats for a folder (file may be { type: "folder", name, path,
 // shared }). Sharing lists come from /shared-users and /shared-users-batch.
-export default function DetailsPanel({ file, account, authToken, API_BASE_URL, onClose, theme, toast, isStarred, folderStatsOf }) {
+export default function DetailsPanel({ file, account, authToken, api, onClose, theme, toast, isStarred, folderStatsOf }) {
   const [sharedUsers, setSharedUsers] = useState(null); // null = loading
 
   const isFolder = file?.type === "folder";
@@ -19,26 +19,21 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
     setSharedUsers(null);
     if (!file || file.type === "multi") return;
     let cancelled = false;
-    const done = (d) => { if (!cancelled) setSharedUsers(d.shared_with || []); };
+    const done = (list) => { if (!cancelled) setSharedUsers(list); };
     const fail = () => { if (!cancelled) setSharedUsers([]); };
+    let target;
     if (isFolder) {
       if (file.shared) return; // recipient view — no shared-with list to show
       const cids = folderStatsOf ? folderStatsOf(file.path).cids : [];
       if (!cids.length) { setSharedUsers([]); return; }
-      fetch(`${API_BASE_URL}/shared-users-batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-auth-token": authToken },
-        body: JSON.stringify({ cids, user_address: account }),
-      }).then((r) => r.json()).then(done).catch(fail);
+      target = { cids, account };
     } else {
       if (!file.is_owner) return;
-      fetch(
-        `${API_BASE_URL}/shared-users?cid=${encodeURIComponent(file.cid)}`,
-        { headers: { "x-auth-token": authToken } }
-      ).then((r) => r.json()).then(done).catch(fail);
+      target = { cid: file.cid };
     }
+    api.sharedUsers(target, authToken).then(done).catch(fail);
     return () => { cancelled = true; };
-  }, [file, account, authToken, API_BASE_URL]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [file, account, authToken, api]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const row = (label, value) => (
     <div style={{ marginBottom: "14px" }}>
@@ -155,7 +150,7 @@ export default function DetailsPanel({ file, account, authToken, API_BASE_URL, o
               <Thumbnail
                 cid={file.cid}
                 filename={file.filename}
-                API_BASE_URL={API_BASE_URL}
+                api={api}
                 authToken={authToken}
                 fallback={<Icon size={56} color={color} strokeWidth={1.2} />}
               />

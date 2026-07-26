@@ -8,13 +8,13 @@ export { hasThumbnailFor };
 // because the endpoint is authenticated and <img> cannot send x-auth-token.
 const thumbCache = new Map();
 
-export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) {
+export function Thumbnail({ cid, filename, api, fallback, authToken }) {
   const [src, setSrc] = useState(() => thumbCache.get(cid) || null);
   useEffect(() => {
     if (thumbCache.has(cid)) { setSrc(thumbCache.get(cid)); return; }
     if (!authToken) return; // wait for download auth before requesting
     let cancelled = false;
-    fetch(`${API_BASE_URL}/thumbnail/${cid}`, { headers: { "x-auth-token": authToken } })
+    api.get(`/thumbnail/${cid}`, { "x-auth-token": authToken })
       .then((r) => {
         if (r.ok && r.headers.get("content-type")?.startsWith("image/")) return r.blob();
         // 401/403 mean the token was stale or not yet valid, which a re-auth
@@ -34,7 +34,7 @@ export function Thumbnail({ cid, filename, API_BASE_URL, fallback, authToken }) 
         if (!cancelled) setSrc("failed");
       });
     return () => { cancelled = true; };
-  }, [cid, API_BASE_URL, authToken]);
+  }, [cid, api, authToken]);
 
   if (!src || src === "failed") return fallback;
   // Photos crop from the center; document-style thumbs (text, PDF) are

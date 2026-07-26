@@ -5,6 +5,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent } from "@testing-library/react";
 import AppLayout from "./AppLayout";
+import { makeApi } from "../lib/api";
 
 // AppLayout is the main shell: it renders Sidebar/Header/Toolbar and the
 // file grid through LayoutContext, owns selection/menu/drag state, and the
@@ -37,7 +38,7 @@ function makeProps(over = {}) {
     displayItems: [],
     currentPath: "/",
     fileTree: null,
-    API_BASE_URL: "http://api",
+    api: makeApi("http://api"),
     view: "my-drive",
     searchQuery: "",
     searchType: null,

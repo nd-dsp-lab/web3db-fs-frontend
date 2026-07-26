@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, cleanup } from "@testing-library/react";
 import { Thumbnail } from "./Thumbnail";
+import { makeApi } from "../lib/api";
 
 // Thumbnails are fetched rather than set as <img src> because the endpoint
 // needs an auth header, and cached at module level so scrolling never
@@ -12,7 +13,7 @@ const FALLBACK = <span data-testid="fallback">icon</span>;
 
 function renderThumb(cid, authToken = "tok") {
   return render(
-    <Thumbnail cid={cid} filename="a.png" API_BASE_URL="http://api" fallback={FALLBACK} authToken={authToken} />
+    <Thumbnail cid={cid} filename="a.png" api={makeApi("http://api")} fallback={FALLBACK} authToken={authToken} />
   );
 }
 

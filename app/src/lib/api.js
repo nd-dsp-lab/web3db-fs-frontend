@@ -4,16 +4,35 @@
 
 export function makeApi(baseUrl) {
   const url = (path) => `${baseUrl}${path}`;
+  const get = (path, headers = {}) => fetch(url(path), { headers });
+  const post = (path, body, headers = {}) =>
+    fetch(url(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
   return {
     url,
     // GET; headers is for per-call additions, e.g. x-auth-token
-    get: (path, headers = {}) => fetch(url(path), { headers }),
+    get,
     // JSON POST — body is serialized, Content-Type attached
-    post: (path, body, headers = {}) =>
-      fetch(url(path), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        body: JSON.stringify(body),
-      }),
+    post,
+
+    // Who a file is shared with. A folder has no identity on-chain, so its
+    // answer is the union across the cids it contains — a POST only because
+    // that list doesn't fit in a query string, not because it changes
+    // anything. Both callers want the same thing: a plain list of addresses.
+    //
+    // The backend identifies the requester from the token and ignores
+    // user_address, but its request model still requires the field.
+    sharedUsers: async ({ cid, cids, account }, authToken) => {
+      const auth = { "x-auth-token": authToken };
+      const res = cids
+        ? await post("/shared-users-batch", { cids, user_address: account }, auth)
+        : await get(`/shared-users?cid=${encodeURIComponent(cid)}`, auth);
+      const data = await res.json();
+      return data.shared_with || [];
+    },
   };
 }

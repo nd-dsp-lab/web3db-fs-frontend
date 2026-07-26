@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import DetailsPanel from "./DetailsPanel";
+import { makeApi } from "../lib/api";
 
 // DetailsPanel renders metadata for a file, a folder, a multi-selection, or an
 // empty state, and loads the shared-user list for owned items.
@@ -15,7 +16,7 @@ function mockShared(list) {
 
 function setup(over = {}) {
   const props = {
-    file: null, account: ACCOUNT, authToken: "tok", API_BASE_URL: "http://api",
+    file: null, account: ACCOUNT, authToken: "tok", api: makeApi("http://api"),
     onClose: vi.fn(), theme: THEME, toast: { success: vi.fn(), error: vi.fn() },
     isStarred: false, folderStatsOf: () => ({ fileCount: 0, folderCount: 0, size: 0, earliest: null, latest: null, cids: [], owner: null }),
     ...over,

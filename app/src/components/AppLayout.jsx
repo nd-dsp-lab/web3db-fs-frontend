@@ -47,7 +47,7 @@ export default function AppLayout({
   handleTrash, handleRestore, handleDropUpload,
   handleShare, handleUnshare, handleShareCids, handleUnshareCids,
   handleRestoreFolder, handleDeleteFolderForever,
-  folderCidsOf, folderStatsOf, fileTree, API_BASE_URL,
+  folderCidsOf, folderStatsOf, fileTree, api,
   view, setView, searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope, darkMode, toggleTheme, user,
   starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder, storageUsed, storageQuota, toast,
   handleBulkTrash, handleBulkRestore, handleBulkDelete, handleBulkMove, confirm,
@@ -68,7 +68,7 @@ export default function AppLayout({
     useExternalDropUpload({ view, searchQuery, toast, handleDropUpload });
 
   const { downloadFile, downloadMany, downloadFolder } =
-    useDownloads({ API_BASE_URL, account, authToken, toast });
+    useDownloads({ api, account, authToken, toast });
 
   const theme = makeTheme(darkMode);
 
@@ -303,7 +303,7 @@ export default function AppLayout({
     starred, starredFolders,
     SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
     sortBy, sortDir, toggleSort,
-    API_BASE_URL, authToken,
+    api, authToken,
     // Toolbar
     selectedFiles, selectedFolders, clearSelection, ownedSelection,
     toggleStarMany, openShareForSelection, downloadSelection,
@@ -378,7 +378,7 @@ export default function AppLayout({
             file={detailsFile}
             account={account}
             authToken={authToken}
-            API_BASE_URL={API_BASE_URL}
+            api={api}
             // detailsFile also gates the keyboard shortcuts, so it has to be
             // cleared here or they stay dead for the rest of the session.
             onClose={() => { setDetailsOpen(false); setDetailsFile(null); }}
@@ -422,7 +422,7 @@ export default function AppLayout({
           file={shareFile}
           account={account}
           authToken={authToken}
-          API_BASE_URL={API_BASE_URL}
+          api={api}
           confirm={confirm}
           onClose={() => setShareFile(null)}
           onShare={shareFile.folder
@@ -444,7 +444,7 @@ export default function AppLayout({
           file={previewFile}
           account={account}
           authToken={authToken}
-          API_BASE_URL={API_BASE_URL}
+          api={api}
           onClose={() => setPreviewFile(null)}
           onDownload={downloadFile}
           darkMode={darkMode}

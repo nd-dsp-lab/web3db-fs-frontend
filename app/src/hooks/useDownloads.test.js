@@ -2,6 +2,7 @@
    useDownloads uses no React hooks; like useFileActions it is a plain factory
    that follows the naming convention, so the tests call it directly. */
 import { useDownloads } from "./useDownloads";
+import { makeApi } from "../lib/api";
 
 // Downloads used to live in AppLayout and could only be exercised by rendering
 // the whole shell and spying on global fetch. Here they are driven directly.
@@ -36,7 +37,7 @@ function setup({ account = ACCOUNT, authToken = "tok", responses = {} } = {}) {
     error: (msg) => calls.toasts.push(["error", msg]),
   };
 
-  const downloads = useDownloads({ API_BASE_URL: BASE, account, authToken, toast });
+  const downloads = useDownloads({ api: makeApi(BASE), account, authToken, toast });
   return { downloads, calls };
 }
 

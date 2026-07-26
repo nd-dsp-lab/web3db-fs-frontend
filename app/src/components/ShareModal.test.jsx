@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ShareModal from "./ShareModal";
+import { makeApi } from "../lib/api";
 
 // ShareModal takes explicit props. It loads the current shared-user list on
 // mount, shares a typed recipient, and revokes access with a confirm.
@@ -15,7 +16,7 @@ function mockShared(list) {
 function setup(over = {}) {
   const props = {
     file: { cid: "c1", filename: "a.pdf" },
-    account: ACCOUNT, authToken: "tok", API_BASE_URL: "http://api",
+    account: ACCOUNT, authToken: "tok", api: makeApi("http://api"),
     onClose: vi.fn(), onShare: vi.fn().mockResolvedValue(), onUnshare: vi.fn().mockResolvedValue(),
     darkMode: false, confirm: vi.fn().mockResolvedValue(true),
     ...over,

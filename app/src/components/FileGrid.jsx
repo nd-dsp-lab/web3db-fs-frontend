@@ -12,7 +12,7 @@ export default function FileGrid() {
     canDragFolder, onFolderDragStart, onFolderDrop, onFileDragStart, setPreviewFile,
     folderKeyOf, folderSharedCount, folderPathOf, starredFolders, starred,
     SelectBox, MoreButton, SharedFolderIcon, sectionLabel, highlightName,
-    API_BASE_URL, authToken,
+    api, authToken,
   } = useLayout();
   return (
     <>
@@ -105,7 +105,7 @@ export default function FileGrid() {
                       <Thumbnail
                         cid={item.cid}
                         filename={item.filename}
-                        API_BASE_URL={API_BASE_URL}
+                        api={api}
                         authToken={authToken}
                         fallback={<Icon size={44} color={color} strokeWidth={1.2} />}
                       />

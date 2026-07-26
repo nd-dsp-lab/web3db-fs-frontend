@@ -58,3 +58,46 @@ test("no tunnel-era headers are sent", () => {
     expect(Object.keys(opts.headers)).not.toContain("ngrok-skip-browser-warning");
   }
 });
+
+describe("sharedUsers", () => {
+  const withResponse = (body) => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => body });
+  };
+
+  test("a single file asks by cid, authenticated", async () => {
+    withResponse({ shared_with: ["0xA", "0xB"] });
+    const list = await makeApi(BASE).sharedUsers({ cid: "c1" }, "tok");
+
+    expect(global.fetch).toHaveBeenCalledWith(`${BASE}/shared-users?cid=c1`, {
+      headers: { "x-auth-token": "tok" },
+    });
+    expect(list).toEqual(["0xA", "0xB"]);
+  });
+
+  test("cids that need escaping survive the query string", async () => {
+    withResponse({});
+    await makeApi(BASE).sharedUsers({ cid: "a/b+c" }, "tok");
+
+    expect(global.fetch.mock.calls[0][0]).toBe(`${BASE}/shared-users?cid=a%2Fb%2Bc`);
+  });
+
+  // A folder has no on-chain identity, so its answer is the union across the
+  // cids it holds — a POST only because that list won't fit in a query string.
+  test("a folder posts its cid list instead", async () => {
+    withResponse({ shared_with: ["0xA"] });
+    await makeApi(BASE).sharedUsers({ cids: ["c1", "c2"], account: "0xME" }, "tok");
+
+    const [url, opts] = global.fetch.mock.calls[0];
+    expect(url).toBe(`${BASE}/shared-users-batch`);
+    expect(opts.method).toBe("POST");
+    expect(opts.headers["x-auth-token"]).toBe("tok");
+    expect(JSON.parse(opts.body).cids).toEqual(["c1", "c2"]);
+  });
+
+  // An unshared file comes back without the key rather than with an empty
+  // list; callers render the result directly, so it has to be an array.
+  test("a response with no shared_with is an empty list, not undefined", async () => {
+    withResponse({});
+    expect(await makeApi(BASE).sharedUsers({ cid: "c1" }, "tok")).toEqual([]);
+  });
+});

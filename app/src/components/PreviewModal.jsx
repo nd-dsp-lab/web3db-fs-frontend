@@ -35,7 +35,7 @@ export function previewKind(filename = "", mime = "") {
   return "none";
 }
 
-export default function PreviewModal({ file, account, authToken, API_BASE_URL, onClose, onDownload, darkMode }) {
+export default function PreviewModal({ file, account, authToken, api, onClose, onDownload, darkMode }) {
   const theme = makeTheme(darkMode);
   const [state, setState] = useState({ status: "loading" }); // loading | ready | error
   const [objectUrl, setObjectUrl] = useState(null);
@@ -48,9 +48,9 @@ export default function PreviewModal({ file, account, authToken, API_BASE_URL, o
     (async () => {
       try {
         if (!authToken) { setState({ status: "error", message: "Verifying sign-in — reopen in a moment" }); return; }
-        const res = await fetch(
-          `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`,
-          { headers: { "x-auth-token": authToken } }
+        const res = await api.get(
+          `/download/${file.cid}/${encodeURIComponent(file.filename)}`,
+          { "x-auth-token": authToken }
         );
         if (!res.ok) throw new Error(`Preview failed (${res.status})`);
         const blob = typedBlob(await res.blob(), file.filename);
@@ -76,7 +76,7 @@ export default function PreviewModal({ file, account, authToken, API_BASE_URL, o
       cancelled = true;
       if (url) URL.revokeObjectURL(url);
     };
-  }, [file, account, authToken, API_BASE_URL]);
+  }, [file, account, authToken, api]);
 
   const handleKey = useCallback((e) => { if (e.key === "Escape") onClose(); }, [onClose]);
   useEffect(() => {

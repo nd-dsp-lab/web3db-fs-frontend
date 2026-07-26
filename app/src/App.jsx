@@ -310,7 +310,7 @@ function App() {
       handleDeleteFolderForever={handleDeleteFolderForever}
       handleUnshare={handleUnshare}
       fileTree={fileTree}
-      API_BASE_URL={API_BASE_URL}
+      api={api}
       view={view}
       setView={setView}
       searchQuery={searchQuery}

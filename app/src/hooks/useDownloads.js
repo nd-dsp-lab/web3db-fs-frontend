@@ -1,5 +1,3 @@
-import { makeApi } from "../lib/api";
-
 // Downloads: single file, a sequence of files behind one progress toast, and
 // a whole folder zipped server-side. Split out of AppLayout, which owned them
 // only because that is where the toolbar and menus happened to live.
@@ -18,8 +16,7 @@ function saveBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-export function useDownloads({ API_BASE_URL, account, authToken, toast }) {
-  const api = makeApi(API_BASE_URL);
+export function useDownloads({ api, account, authToken, toast }) {
   const auth = () => ({ "x-auth-token": authToken });
 
   // The token arrives a moment after the wallet does, so "not signed in" and
