@@ -16,6 +16,7 @@ import BackgroundMenu from "./BackgroundMenu";
 import FolderMenu from "./FolderMenu";
 import SelectionMenu from "./SelectionMenu";
 import { useSelection } from "../hooks/useSelection";
+import { useDownloads } from "../hooks/useDownloads";
 import { makeTheme } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
@@ -174,44 +175,8 @@ export default function AppLayout({
     };
   }, [bgMenu, folderMenu, selMenu]);
 
-  const downloadFile = async (file) => {
-    if (!account) {
-      toast.info("Sign in first");
-      return;
-    }
-    if (!authToken) {
-      toast.info("Verifying sign-in — try again in a moment");
-      return;
-    }
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/download/${file.cid}/${encodeURIComponent(file.filename)}`,
-        { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
-      );
-      if (!res.ok) throw new Error("Download failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = file.filename;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error(err.message || "Download failed");
-    }
-  };
-
-  // Sequential bulk download with a single progress toast
-  const downloadMany = async (items) => {
-    const tId = toast.loading(`Downloading 0/${items.length}…`);
-    let done = 0;
-    for (const f of items) {
-      toast.update(tId, `Downloading ${done + 1}/${items.length}…`, "loading");
-      await downloadFile(f); // errors toast individually inside
-      done++;
-    }
-    toast.update(tId, `Downloaded ${done} file(s)`, "success");
-  };
+  const { downloadFile, downloadMany, downloadFolder } =
+    useDownloads({ API_BASE_URL, account, authToken, toast });
 
   const theme = makeTheme(darkMode);
 
@@ -291,31 +256,6 @@ export default function AppLayout({
     if (item.shared) return -1;
     if (!folderStatsOf) return 0;
     return folderStatsOf((item.trash ? "/.trash" : "") + folderPathOf(item)).sharedWith?.length || 0;
-  };
-
-  const downloadFolder = async (folderName, folderPath) => {
-    if (!authToken) { toast.info("Verifying sign-in — try again in a moment"); return; }
-    const tId = toast.loading(`Zipping "${folderName}"…`);
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/download-folder?path=${encodeURIComponent(folderPath)}`,
-        { headers: { "ngrok-skip-browser-warning": "true", "x-auth-token": authToken } }
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Download failed");
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${folderName}.zip`;
-      link.click();
-      URL.revokeObjectURL(url);
-      toast.update(tId, `Downloaded "${folderName}.zip"`, "success");
-    } catch (err) {
-      toast.update(tId, err.message || "Download failed", "error");
-    }
   };
 
   const promptRenameFolder = (folderName, folderPath) =>
