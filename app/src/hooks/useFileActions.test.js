@@ -33,7 +33,7 @@ function setup({
   currentPath = "/",
   initialEmptyFolders = [],
 } = {}) {
-  const calls = { api: [], toasts: [], provider: [], retrieveFiles: 0, view: [], opts: [] };
+  const calls = { api: [], toasts: [], provider: [], retrieveFiles: 0, view: [], opts: [], confirms: [] };
 
   const api = {
     url: (p) => `http://api${p}`,
@@ -85,7 +85,7 @@ function setup({
     setView: (v) => calls.view.push(v),
     setCurrentPath: (p) => calls.view.push(p),
     setSearchQuery: () => {},
-    confirm: async () => confirmAnswer,
+    confirm: async (opts) => { calls.confirms.push(opts); return confirmAnswer; },
   });
 
   return { actions, calls, getEmptyFolders: () => emptyFolders };
@@ -177,8 +177,9 @@ describe("signAndVerifyTransaction", () => {
     await actions.handleShare("cid1", "0xF00", "a.pdf");
     await actions.handleBulkTrash([file()]);
 
-    const prepares = calls.api.filter((c) => c.path !== "/verify-upload");
-    expect(prepares.length).toBeGreaterThan(0);
+    const PREPARE = ["/move", "/delete", "/share", "/move-batch"];
+    const prepares = calls.api.filter((c) => PREPARE.includes(c.path));
+    expect(prepares.map((c) => c.path).sort()).toEqual([...PREPARE].sort());
     expect(prepares.filter((c) => c.body.user_address !== ACCOUNT)).toEqual([]);
   });
 });
@@ -569,16 +570,44 @@ describe("share and unshare", () => {
     expect(notify.sharer).toBe("me@x.com");
   });
 
-  test("a pregenerated recipient is flagged in the confirm prompt", async () => {
-    let asked;
-    const { actions } = setup({
+  // The prompt is the only place the user sees which wallet an email resolved
+  // to, so its contents are load-bearing: they are approving that address.
+  test("the confirm prompt names the typed email and the resolved wallet", async () => {
+    const { actions, calls } = setup({
+      responses: { "/resolve-recipient": { address: "0xRESOLVEDADDRESS0001", pregenerated: false } },
+    });
+    await actions.handleShare("cid1", "  friend@x.com  ", "a.pdf");
+
+    const [asked] = calls.confirms;
+    expect(asked.message).toContain("friend@x.com");
+    expect(asked.message).toContain("0xRESO...0001");
+    expect(asked.message).not.toContain("haven't used Web3FS");
+  });
+
+  test("a pregenerated recipient is flagged, in the singular for one file", async () => {
+    const { actions, calls } = setup({
       responses: { "/resolve-recipient": { address: "0xRESOLVED", pregenerated: true } },
     });
-    // intercept confirm by re-reading the message it was asked — capture via a spy
-    // (setup's confirm always says yes; here we assert the resolve happened)
     await actions.handleShare("cid1", "new@x.com", "a.pdf");
-    asked = true;
-    expect(asked).toBe(true);
+
+    expect(calls.confirms[0].message).toContain("the file will appear");
+  });
+
+  test("a pregenerated recipient is flagged in the plural for a batch", async () => {
+    const { actions, calls } = setup({
+      responses: { "/resolve-recipient": { address: "0xRESOLVED", pregenerated: true } },
+    });
+    await actions.handleShareCids(["c1", "c2"], "new@x.com", "2 items");
+
+    expect(calls.confirms[0].message).toContain("the files will appear");
+  });
+
+  test("a raw 0x recipient is neither resolved nor confirmed", async () => {
+    const { actions, calls } = setup();
+    await actions.handleShare("cid1", "0xF00", "a.pdf");
+
+    expect(calls.confirms).toEqual([]);
+    expect(posted(calls, "/notify-share")).toEqual([]);  // nothing to email
   });
 
   test("declining the share confirm sends no transaction", async () => {

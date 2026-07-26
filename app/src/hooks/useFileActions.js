@@ -78,37 +78,48 @@ export function useFileActions({
     return data;
   };
 
+  // Turn whatever the user typed into an address to grant. An email has to be
+  // resolved and then confirmed: the user named a mailbox, so they need to see
+  // which wallet it maps to before signing. Returns null if they decline; the
+  // email is carried alongside so the caller can send the notification.
+  const confirmRecipient = async (recipient, plural) => {
+    const typed = recipient.trim();
+    const email = typed.includes("@") ? typed.toLowerCase() : null;
+    if (typed.startsWith("0x")) return { address: typed, email };
+
+    const resolved = await resolveRecipient(typed);
+    const note = resolved.pregenerated
+      ? `\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the ${plural ? "files" : "file"} will appear when they first log in.`
+      : "";
+    const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
+    const ok = await confirm({ title: "Share file", message: `Share with ${typed} (${short})?${note}`, confirmLabel: "Share" });
+    return ok ? { address: resolved.address, email } : null;
+  };
+
+  // Best-effort email notification once a share is on-chain — never awaited,
+  // and a failure here doesn't undo the share the user already paid for.
+  const notifyShare = (email, filename) => {
+    if (!email) return;
+    const sharer = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
+    api.post("/notify-share", { recipient_email: email, filename, sharer })
+      .then(async (r) => {
+        if (r.ok) { console.log("Share notification sent to", email); return; }
+        const d = await r.json().catch(() => ({}));
+        console.warn("Share notification failed:", d.error);
+      })
+      .catch((e) => console.warn("Share notification failed:", e));
+  };
+
   const handleShare = async (cid, recipient, filename) => {
     if (!account) return;
     let tId;
     try {
-      let toAddress = recipient.trim();
-      const recipientEmail = toAddress.includes("@") ? toAddress.toLowerCase() : null;
-      if (!toAddress.startsWith("0x")) {
-        const resolved = await resolveRecipient(toAddress);
-        const note = resolved.pregenerated
-          ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the file will appear when they first log in."
-          : "";
-        const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
-        if (!(await confirm({ title: "Share file", message: `Share with ${toAddress} (${short})?${note}`, confirmLabel: "Share" }))) return;
-        toAddress = resolved.address;
-      }
+      const to = await confirmRecipient(recipient, false);
+      if (!to) return;
       tId = toast.loading("Preparing share…");
-      await prepareAndSign("/share", { cid, to_address: toAddress }, tId);
+      await prepareAndSign("/share", { cid, to_address: to.address }, tId);
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
-      // Best-effort email notification once the share is on-chain
-      if (recipientEmail) {
-        const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
-        api.post("/notify-share", {
-          recipient_email: recipientEmail,
-          filename: filename || "a file",
-          sharer: sharerName,
-        }).then(async (r) => {
-          const d = await r.json().catch(() => ({}));
-          if (r.ok) console.log("Share notification sent to", recipientEmail);
-          else console.warn("Share notification failed:", d.error);
-        }).catch((e) => console.warn("Share notification failed:", e));
-      }
+      notifyShare(to.email, filename || "a file");
       retrieveFiles();
     } catch (err) {
       reportTxError("Share", err, tId);
@@ -138,28 +149,12 @@ export function useFileActions({
     }
     let tId;
     try {
-      let toAddress = recipient.trim();
-      const recipientEmail = toAddress.includes("@") ? toAddress.toLowerCase() : null;
-      if (!toAddress.startsWith("0x")) {
-        const resolved = await resolveRecipient(toAddress);
-        const note = resolved.pregenerated
-          ? "\n\nThey haven't used Web3FS yet — a wallet was reserved for this email and the files will appear when they first log in."
-          : "";
-        const short = `${resolved.address.slice(0, 6)}...${resolved.address.slice(-4)}`;
-        if (!(await confirm({ title: "Share file", message: `Share with ${toAddress} (${short})?${note}`, confirmLabel: "Share" }))) return;
-        toAddress = resolved.address;
-      }
+      const to = await confirmRecipient(recipient, true);
+      if (!to) return;
       tId = toast.loading(`Sharing ${cids.length} file(s)…`);
-      await prepareAndSign("/share-batch", { cids, to_address: toAddress }, tId);
+      await prepareAndSign("/share-batch", { cids, to_address: to.address }, tId);
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
-      if (recipientEmail) {
-        const sharerName = user?.google?.name || user?.email?.address || `${account.slice(0, 6)}...${account.slice(-4)}`;
-        api.post("/notify-share", {
-          recipient_email: recipientEmail,
-          filename: notifyName,
-          sharer: sharerName,
-        }).catch((e) => console.warn("Share notification failed:", e));
-      }
+      notifyShare(to.email, notifyName);
       retrieveFiles();
     } catch (err) {
       reportTxError("Share", err, tId);
