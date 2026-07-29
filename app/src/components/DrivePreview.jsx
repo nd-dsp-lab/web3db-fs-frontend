@@ -1,4 +1,4 @@
-import { HardDrive, Users, Clock, Star, Trash2, Folder, FileText } from "lucide-react";
+import { HardDrive, Users, Clock, Star, Trash2, Folder, FileText, Lock } from "lucide-react";
 import { BLUE } from "../lib/theme";
 
 // A scaled-down still of the drive itself, for the landing page. Signed-out
@@ -102,7 +102,10 @@ export default function DrivePreview({ theme }) {
               <div key={name} style={{ ...tileStyle(theme), flexDirection: "column", alignItems: "stretch", gap: "8px", padding: "10px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <FileText size={13} color={theme.subText} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-                  <span style={ellipsis}>{name}</span>
+                  <span style={{ ...ellipsis, flex: 1 }}>{name}</span>
+                  {/* Every file carries it, because every file is encrypted —
+                      marking one would imply the others are not. */}
+                  <Lock size={11} color={BLUE} strokeWidth={2.2} style={{ flexShrink: 0 }} />
                 </div>
                 {/* stands in for the thumbnail the real grid renders */}
                 <div style={{ height: "46px", borderRadius: "6px", backgroundColor: theme.bg }} />
