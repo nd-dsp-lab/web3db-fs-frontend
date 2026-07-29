@@ -2,6 +2,7 @@ import { Plus, HardDrive, Users, Clock, Star, Trash2, Cloud } from "lucide-react
 import { formatBytes } from "../lib/fileTypes";
 import { STORAGE_QUOTA } from "../lib/constants";
 import { MenuPanel, MenuRow } from "./Menu";
+import Logo from "./Logo";
 import { useLayout } from "../contexts/LayoutContext";
 
 // Left rail: brand, New menu, view navigation, and the storage indicator.
@@ -39,7 +40,7 @@ export default function Sidebar() {
         style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 8px 20px", cursor: "pointer" }}
         onClick={() => { setView("my-drive"); setCurrentPath("/"); setSearchQuery(""); }}
       >
-        <div style={{ backgroundColor: "#1A73E8", color: "white", width: "32px", height: "32px", borderRadius: "8px", fontWeight: "bold", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>Δ</div>
+        <Logo />
         <span style={{ fontSize: "22px" }}>Web3FS</span>
       </div>
 
