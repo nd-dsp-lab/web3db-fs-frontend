@@ -334,4 +334,72 @@ describe("download auth token", () => {
 
     await waitFor(() => expect(mockCapture.props.authToken).toBe("tok2"));
   });
+
+  test("a re-render mid-signature does not throw the token away", async () => {
+    // Privy hands back a fresh wallet object on some renders, which re-runs
+    // the effect for the same address. That used to count as a supersede: the
+    // token arrived, went into localStorage, and was dropped instead of being
+    // applied — and authRequested still held the address, so nothing asked
+    // again. Downloads and previews stayed dead until a reload.
+    let releaseSignature;
+    const pending = new Promise((resolve) => { releaseSignature = resolve; });
+    const slowWallet = () => ({
+      address: ADDR,
+      walletClientType: "privy",
+      getEthereumProvider: async () => ({
+        request: async ({ method }) =>
+          (method === "personal_sign" ? pending.then(() => "0xsig") : null),
+      }),
+    });
+
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [slowWallet()];
+    const { rerender } = render(<App />);
+
+    // the wallet object changes identity while the signature is still pending
+    mockWallets.value = [slowWallet()];
+    rerender(<App />);
+
+    await act(async () => { releaseSignature(); });
+
+    await waitFor(() => expect(mockCapture.props.authToken).toBe("tok"));
+  });
+
+  test("a token signed by a previous account is not installed for the next one", async () => {
+    // The reason the supersede check existed: without it, address A's token
+    // lands after B signs in and every download 403s.
+    // token per address, so "whose token got installed" is answerable
+    mockApi.post.mockImplementation((path, body) => Promise.resolve({
+      ok: true,
+      json: async () => (path === "/auth/token"
+        ? { token: `tok-for-${body.address}`, expires: 9_999_999_999 }
+        : {}),
+    }));
+
+    let releaseSignature;
+    const pending = new Promise((resolve) => { releaseSignature = resolve; });
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [{
+      address: ADDR,
+      walletClientType: "privy",
+      getEthereumProvider: async () => ({
+        request: async ({ method }) =>
+          (method === "personal_sign" ? pending.then(() => "0xsig") : null),
+      }),
+    }];
+    const { rerender } = render(<App />);
+
+    // someone else signs in before the first signature comes back
+    const OTHER = "0x00000000000000000000000000000000000000FF";
+    mockWallets.value = [{
+      address: OTHER,
+      walletClientType: "privy",
+      getEthereumProvider: async () => ({ request: async () => null }),
+    }];
+    rerender(<App />);
+
+    await act(async () => { releaseSignature(); });
+
+    expect(mockCapture.props.authToken).not.toBe(`tok-for-${ADDR}`);
+  });
 });

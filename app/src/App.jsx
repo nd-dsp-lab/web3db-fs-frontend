@@ -80,6 +80,10 @@ function App() {
   // tied to the address, cached in localStorage. Populated by the effect below.
   const [authToken, setAuthToken] = useState(null);
   const authRequested = useRef(new Set());
+  // Read by the pending signature below to see who is signed in *now*, rather
+  // than closing over the address the effect started with.
+  const accountRef = useRef(account);
+  accountRef.current = account;
 
   const disconnectWallet = async () => {
     // Drop the cached download token too. It is a 24h bearer credential with
@@ -116,8 +120,14 @@ function App() {
     // The signature prompt can outlive this account: logging out and back in
     // as someone else while it is pending would otherwise install the first
     // address's token for the second, and every download would 403.
+    //
+    // The test is who is signed in when the token lands, NOT whether this
+    // effect re-ran. Privy hands back a fresh wallet object on some renders,
+    // which re-runs the effect for the same address; treating that as a
+    // supersede dropped a perfectly good token on the floor, and since
+    // authRequested still held the address, nothing ever asked again — the
+    // session was stuck without downloads until a reload read the cache.
     const signingFor = account;
-    let superseded = false;
     (async () => {
       try {
         const timestamp = Math.floor(Date.now() / 1000);
@@ -133,16 +143,17 @@ function App() {
         const data = await res.json();
         if (!res.ok || !data.token) throw new Error(data.error || "Token request failed");
         localStorage.setItem(key, JSON.stringify(data));
-        if (!superseded) setAuthToken(data.token);
+        if (accountRef.current === signingFor) setAuthToken(data.token);
       } catch (err) {
         // Retry on the next attempt: without this a single backend hiccup
         // disables downloads until a full page reload.
         authRequested.current.delete(signingFor);
         console.error("Download auth failed:", err);
-        if (!superseded) toast.error("Sign-in verification failed — downloads and previews disabled");
+        if (accountRef.current === signingFor) {
+          toast.error("Sign-in verification failed — downloads and previews disabled");
+        }
       }
     })();
-    return () => { superseded = true; };
   }, [account, wallet, api, getProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- GAS DRIP for fresh embedded wallets ---
