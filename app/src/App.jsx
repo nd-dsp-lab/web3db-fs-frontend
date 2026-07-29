@@ -280,15 +280,27 @@ function App() {
   // Storage usage: only files the user owns count against them
   const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
 
-  // Real capacity for the usage bar: what the IPFS node's disk can still take
-  const [diskFree, setDiskFree] = useState(null);
+  // The other two numbers on the storage bar, both node-wide.
+  //
+  // storageQuota is the IPFS repo's configured maximum — the limit that
+  // actually binds, and it comes from the daemon. The backend's disk_total is
+  // only a fallback, and an unreliable one: the server runs in an SGX enclave,
+  // where Gramine reports a synthetic filesystem size, not the host's disk.
+  //
+  // storageNodeUsed is what the whole repo holds. It is not the sum of every
+  // user's storageUsed — identical content deduplicates to one block, and the
+  // repo also carries data this app never uploaded.
+  const [storageQuota, setStorageQuota] = useState(null);
+  const [storageNodeUsed, setStorageNodeUsed] = useState(null);
   useEffect(() => {
     api.get("/storage-stats")
       .then((r) => r.json())
-      .then((d) => { if (d.disk_free != null) setDiskFree(d.disk_free); })
+      .then((d) => {
+        setStorageQuota(d.ipfs_storage_max ?? d.disk_total ?? null);
+        setStorageNodeUsed(d.ipfs_repo_size ?? null);
+      })
       .catch(() => {});
   }, [api]);
-  const storageQuota = diskFree != null ? storageUsed + diskFree : null;
 
   // What App owns, handed to the tree through context. AppLayout adds its own
   // layout state on top of this and republishes both as LayoutContext, so the
@@ -311,7 +323,7 @@ function App() {
     searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope,
     darkMode, toggleTheme,
     starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder,
-    storageUsed, storageQuota,
+    storageUsed, storageQuota, storageNodeUsed,
     toast, confirm,
   };
 

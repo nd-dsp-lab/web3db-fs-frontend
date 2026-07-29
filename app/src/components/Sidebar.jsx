@@ -11,8 +11,13 @@ export default function Sidebar() {
   const {
     theme, view, setView, setCurrentPath, setSearchQuery,
     isNewMenuOpen, setIsNewMenuOpen, newMenuItems,
-    storageUsed, storageQuota, dropHover, onInternalDropTo,
+    storageUsed, storageQuota, storageNodeUsed, dropHover, onInternalDropTo,
   } = useLayout();
+  // Space left is node-wide (the disk is shared), but it is shown as a plain
+  // capacity rather than as other people's usage: what those bytes are being
+  // spent on is nobody else's business.
+  const quota = storageQuota || STORAGE_QUOTA;
+  const available = Math.max(0, quota - (storageNodeUsed ?? storageUsed));
   const NavItem = ({ id, icon: Icon, label, dropPath }) => (
     <div
       onClick={() => { setView(id); setCurrentPath("/"); setSearchQuery(""); }}
@@ -90,11 +95,11 @@ export default function Sidebar() {
         <div style={{ height: "4px", borderRadius: "999px", backgroundColor: theme.tile, overflow: "hidden", marginBottom: "8px" }}>
           <div style={{
             height: "100%", borderRadius: "999px", backgroundColor: "#1A73E8",
-            width: `${Math.min(100, (storageUsed / (storageQuota || STORAGE_QUOTA)) * 100)}%`, minWidth: storageUsed > 0 ? "2px" : 0,
+            width: `${Math.min(100, (storageUsed / quota) * 100)}%`, minWidth: storageUsed > 0 ? "2px" : 0,
           }} />
         </div>
         <div style={{ fontSize: "12px", color: theme.subText }}>
-          {formatBytes(storageUsed)} of {formatBytes(storageQuota || STORAGE_QUOTA)} used
+          {formatBytes(storageUsed)} used · {formatBytes(available)} available
         </div>
       </div>
     </aside>

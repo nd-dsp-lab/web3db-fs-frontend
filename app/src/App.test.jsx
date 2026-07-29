@@ -78,7 +78,7 @@ const FILES = [
 
 function stubApi() {
   mockApi.get.mockImplementation((path) => {
-    if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000 }) });
+    if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000, disk_total: 5000, ipfs_storage_max: 7000, ipfs_repo_size: 4000 }) });
     if (path.startsWith("/?user_address")) return Promise.resolve({ json: async () => ({ user_files: FILES }) });
     return Promise.resolve({ json: async () => ({}) });
   });
@@ -130,13 +130,29 @@ describe("authentication → account", () => {
 });
 
 describe("storage math", () => {
-  test("storageUsed counts only owned files; quota adds disk_free", async () => {
+  test("storageUsed counts only owned files; quota is the IPFS repo cap", async () => {
     mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
     mockWallets.value = [embeddedWallet()];
     await renderApp();
 
     await waitFor(() => expect(mockCapture.props.storageUsed).toBe(300)); // 100 + 200, not the 999 shared-in file
-    await waitFor(() => expect(mockCapture.props.storageQuota).toBe(1300)); // used + disk_free
+    // the IPFS repo cap, not used + disk_free
+    await waitFor(() => expect(mockCapture.props.storageQuota).toBe(7000));
+    // node-wide usage travels alongside it, so the sidebar can work out what is left
+    await waitFor(() => expect(mockCapture.props.storageNodeUsed).toBe(4000));
+  });
+
+  test("quota falls back to disk_total when the IPFS repo cap is unknown", async () => {
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [embeddedWallet()];
+    mockApi.get.mockImplementation((path) => {
+      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_total: 5000 }) });
+      if (path.startsWith("/?user_address")) return Promise.resolve({ json: async () => ({ user_files: FILES }) });
+      return Promise.resolve({ json: async () => ({}) });
+    });
+    await renderApp();
+
+    await waitFor(() => expect(mockCapture.props.storageQuota).toBe(5000));
   });
 });
 
@@ -265,7 +281,7 @@ describe("retrieveFiles ordering", () => {
     let releaseFirst;
     let call = 0;
     mockApi.get.mockImplementation((path) => {
-      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000 }) });
+      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000, disk_total: 5000, ipfs_storage_max: 7000, ipfs_repo_size: 4000 }) });
       if (!path.startsWith("/?user_address")) return Promise.resolve({ json: async () => ({}) });
       call += 1;
       // Mount fires more than one refresh on its own (loading emptyFolders
@@ -294,7 +310,7 @@ describe("retrieveFiles ordering", () => {
 
   test("a failed refresh tells the user instead of failing silently", async () => {
     mockApi.get.mockImplementation((path) => {
-      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000 }) });
+      if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000, disk_total: 5000, ipfs_storage_max: 7000, ipfs_repo_size: 4000 }) });
       if (path.startsWith("/?user_address")) return Promise.reject(new Error("network down"));
       return Promise.resolve({ json: async () => ({}) });
     });
