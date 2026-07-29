@@ -22,7 +22,7 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSortedItems } from "../hooks/useSortedItems";
 import { useDragMove } from "../hooks/useDragMove";
 import { useContextMenus } from "../hooks/useContextMenus";
-import { makeTheme } from "../lib/theme";
+import { makeTheme, FONT } from "../lib/theme";
 import { joinPath } from "../lib/paths";
 import { LayoutContext } from "../contexts/LayoutContext";
 import { useWorkspace } from "../contexts/WorkspaceContext";
@@ -299,7 +299,7 @@ export default function AppLayout() {
 
   return (
     <LayoutContext.Provider value={layoutCtx}>
-    <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: "'Google Sans', Roboto, Arial, sans-serif", color: theme.text }}>
+    <div style={{ display: "flex", height: "100vh", backgroundColor: theme.bg, fontFamily: FONT, color: theme.text }}>
       {/* SIDEBAR */}
       <Sidebar />
 

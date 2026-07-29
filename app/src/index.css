@@ -7,6 +7,34 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* The landing page's three points. auto-fit would drop to two columns on a
+   mid-width window and leave the third stranded on its own row, so the count
+   is pinned: three across, or one under the other on a narrow screen. */
+.landing-points {
+  display: grid;
+  gap: 48px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* The preview is a miniature of the desktop drive. Below the breakpoint it
+   compresses into unreadable slivers, and a broken-looking mock is worse than
+   no mock, so it drops out rather than scaling down. */
+.landing-preview {
+  display: flex;
+  justify-content: center;
+}
+
+@media (max-width: 820px) {
+  .landing-points {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .landing-preview {
+    display: none;
+  }
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;

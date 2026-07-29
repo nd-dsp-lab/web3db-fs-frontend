@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import AppLayout from "./components/AppLayout";
+import Landing from "./components/Landing";
 import ToastStack from "./components/Toast";
 import ConfirmModal from "./components/ConfirmModal";
 import { buildFileTree } from "./utils/helpers";
@@ -307,7 +308,12 @@ function App() {
     <>
     <ToastStack toasts={toasts} dismiss={dismissToast} darkMode={darkMode} />
     <WorkspaceContext.Provider value={workspace}>
-      <AppLayout />
+      {/* Gate on `authenticated` rather than `account`: on a reload Privy
+          reports the restored session a tick before the wallet is available,
+          and gating on the address would flash the landing page at someone
+          who is already signed in. Render nothing until Privy is ready, for
+          the same reason in the other direction. */}
+      {!ready ? null : authenticated ? <AppLayout /> : <Landing />}
     </WorkspaceContext.Provider>
     {confirmDialog && (
       <ConfirmModal

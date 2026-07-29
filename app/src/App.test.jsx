@@ -36,7 +36,23 @@ vi.mock("./lib/api", () => ({
 vi.mock("./components/AppLayout", async () => {
   const { useWorkspace } = await import("./contexts/WorkspaceContext");
   return {
-    default: function AppLayoutStub() { mockCapture.props = useWorkspace(); return null; },
+    default: function AppLayoutStub() {
+      mockCapture.props = useWorkspace();
+      return <div data-testid="app-layout" />;
+    },
+  };
+});
+
+// App swaps in the landing page when there is no session. It reads the same
+// context, so the sink captures either branch and the signed-out tests below
+// still see the bundle.
+vi.mock("./components/Landing", async () => {
+  const { useWorkspace } = await import("./contexts/WorkspaceContext");
+  return {
+    default: function LandingStub() {
+      mockCapture.props = useWorkspace();
+      return <div data-testid="landing" />;
+    },
   };
 });
 
@@ -189,6 +205,37 @@ describe("session lifecycle", () => {
     await waitFor(() => expect(mockCapture.props.authToken).toBe("cached-tok"));
     // reused from cache — never posted to /auth/token
     expect(mockApi.post).not.toHaveBeenCalledWith("/auth/token", expect.anything());
+  });
+});
+
+describe("signed-out landing", () => {
+  test("no session shows the landing page, not the empty drive", async () => {
+    mockPrivy.value = { ready: true, authenticated: false, login: vi.fn(), logout: vi.fn(), user: null };
+    mockWallets.value = [];
+    await renderApp();
+
+    expect(screen.getByTestId("landing")).toBeInTheDocument();
+    expect(screen.queryByTestId("app-layout")).not.toBeInTheDocument();
+  });
+
+  test("a restored session shows the drive before the wallet arrives", async () => {
+    // Privy reports `authenticated` a tick ahead of useWallets(), so gating on
+    // the address would flash the landing page at a signed-in user.
+    mockPrivy.value = { ready: true, authenticated: true, login: vi.fn(), logout: vi.fn(), user: { google: { name: "Ada" } } };
+    mockWallets.value = [];
+    await renderApp();
+
+    expect(screen.getByTestId("app-layout")).toBeInTheDocument();
+    expect(mockCapture.props.account).toBeNull();
+  });
+
+  test("neither renders until Privy is ready", async () => {
+    mockPrivy.value = { ready: false, authenticated: false, login: vi.fn(), logout: vi.fn(), user: null };
+    mockWallets.value = [];
+    await renderApp();
+
+    expect(screen.queryByTestId("landing")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("app-layout")).not.toBeInTheDocument();
   });
 });
 

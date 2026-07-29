@@ -26,6 +26,14 @@ export function makeTheme(darkMode) {
   };
 }
 
+// 'Google Sans' used to head this stack, but it is Google's face rather than
+// one we serve, and it is installed almost nowhere — every machine fell
+// silently through to Arial. Leading with system-ui picks the platform's own
+// UI font (SF on macOS, Segoe on Windows, Roboto on Android), which is a
+// choice rather than an accident.
+export const FONT =
+  'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
 // Colours that carry meaning rather than depth. These are deliberately the
 // same in both themes — each one is legible on either surface, and swapping
 // them per theme would weaken the signal.
