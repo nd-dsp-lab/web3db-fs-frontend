@@ -138,8 +138,8 @@ describe("storage math", () => {
     await waitFor(() => expect(mockCapture.props.storageUsed).toBe(300)); // 100 + 200, not the 999 shared-in file
     // the IPFS repo cap, not used + disk_free
     await waitFor(() => expect(mockCapture.props.storageQuota).toBe(7000));
-    // node-wide usage travels alongside it, so the sidebar can work out what is left
-    await waitFor(() => expect(mockCapture.props.storageNodeUsed).toBe(4000));
+    // node-wide usage is no longer surfaced — the UI shows only the user's own bytes
+    expect(mockCapture.props.storageNodeUsed).toBeUndefined();
   });
 
   test("quota falls back to disk_total when the IPFS repo cap is unknown", async () => {

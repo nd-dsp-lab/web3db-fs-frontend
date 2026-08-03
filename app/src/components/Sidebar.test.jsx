@@ -141,20 +141,15 @@ test("mousedown in the New area does not reach the background handler", () => {
 
 test("storage falls back to the default quota and stays empty at zero usage", () => {
   const { container } = renderSidebar({ storageUsed: 0, storageQuota: 0 });
-  expect(screen.getByText(/available/).textContent).toBe("0 B used · 1.0 GB available");
+  expect(screen.getByText(/used/).textContent).toBe("0 B used");
 
   expect(container.querySelector('div[style*="width: 0%"]')).toBeInTheDocument();
 });
 
-test("space left counts everything on the node, not just this user's files", () => {
-  // 250 of the used 400 belong to other people, so 600 is left, not 750
-  renderSidebar({ storageUsed: 150, storageNodeUsed: 400, storageQuota: 1000 });
-  expect(screen.getByText(/available/).textContent).toBe("150 B used · 600 B available");
-});
-
-test("space left never goes negative once the node is over its cap", () => {
-  renderSidebar({ storageUsed: 10, storageNodeUsed: 1500, storageQuota: 1000 });
-  expect(screen.getByText(/available/).textContent).toBe("10 B used · 0 B available");
+test("storage shows only the user's own usage, never the node's capacity", () => {
+  renderSidebar({ storageUsed: 150, storageQuota: 1000 });
+  expect(screen.getByText(/used/).textContent).toBe("150 B used");
+  expect(screen.queryByText(/available/)).not.toBeInTheDocument();
 });
 
 test("the storage bar tracks usage and never exceeds full", () => {

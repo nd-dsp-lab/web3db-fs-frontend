@@ -11,13 +11,11 @@ export default function Sidebar() {
   const {
     theme, view, setView, setCurrentPath, setSearchQuery,
     isNewMenuOpen, setIsNewMenuOpen, newMenuItems,
-    storageUsed, storageQuota, storageNodeUsed, dropHover, onInternalDropTo,
+    storageUsed, storageQuota, dropHover, onInternalDropTo,
   } = useLayout();
-  // Space left is node-wide (the disk is shared), but it is shown as a plain
-  // capacity rather than as other people's usage: what those bytes are being
-  // spent on is nobody else's business.
+  // The quota only scales the bar; the capacity number itself is never shown —
+  // it is node-wide, so displaying it would reveal the server's disk size.
   const quota = storageQuota || STORAGE_QUOTA;
-  const available = Math.max(0, quota - (storageNodeUsed ?? storageUsed));
   const NavItem = ({ id, icon: Icon, label, dropPath }) => (
     <div
       onClick={() => { setView(id); setCurrentPath("/"); setSearchQuery(""); }}
@@ -99,7 +97,7 @@ export default function Sidebar() {
           }} />
         </div>
         <div style={{ fontSize: "12px", color: theme.subText }}>
-          {formatBytes(storageUsed)} used · {formatBytes(available)} available
+          {formatBytes(storageUsed)} used
         </div>
       </div>
     </aside>

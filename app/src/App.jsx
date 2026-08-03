@@ -280,25 +280,17 @@ function App() {
   // Storage usage: only files the user owns count against them
   const storageUsed = files.reduce((sum, f) => sum + (f.is_owner ? (f.size || 0) : 0), 0);
 
-  // The other two numbers on the storage bar, both node-wide.
-  //
-  // storageQuota is the IPFS repo's configured maximum — the limit that
-  // actually binds, and it comes from the daemon. The backend's disk_total is
-  // only a fallback, and an unreliable one: the server runs in an SGX enclave,
-  // where Gramine reports a synthetic filesystem size, not the host's disk.
-  //
-  // storageNodeUsed is what the whole repo holds. It is not the sum of every
-  // user's storageUsed — identical content deduplicates to one block, and the
-  // repo also carries data this app never uploaded.
+  // storageQuota only scales the storage bar — the capacity itself is never
+  // displayed, since it is node-wide and would reveal the server's disk size.
+  // It is the IPFS repo's configured maximum — the limit that actually binds,
+  // and it comes from the daemon. The backend's disk_total is only a
+  // fallback, and an unreliable one: the server runs in an SGX enclave, where
+  // Gramine reports a synthetic filesystem size, not the host's disk.
   const [storageQuota, setStorageQuota] = useState(null);
-  const [storageNodeUsed, setStorageNodeUsed] = useState(null);
   useEffect(() => {
     api.get("/storage-stats")
       .then((r) => r.json())
-      .then((d) => {
-        setStorageQuota(d.ipfs_storage_max ?? d.disk_total ?? null);
-        setStorageNodeUsed(d.ipfs_repo_size ?? null);
-      })
+      .then((d) => setStorageQuota(d.ipfs_storage_max ?? d.disk_total ?? null))
       .catch(() => {});
   }, [api]);
 
@@ -323,7 +315,7 @@ function App() {
     searchQuery, setSearchQuery, searchType, setSearchType, searchScope, setSearchScope,
     darkMode, toggleTheme,
     starred, toggleStar, toggleStarMany, starredFolders, toggleStarFolder,
-    storageUsed, storageQuota, storageNodeUsed,
+    storageUsed, storageQuota,
     toast, confirm,
   };
 
