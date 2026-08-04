@@ -1,2 +1,5 @@
 .DS_Store
 .idea/
+
+# local-only documentation
+docs/
