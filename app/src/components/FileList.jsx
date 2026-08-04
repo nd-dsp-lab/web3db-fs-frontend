@@ -30,6 +30,11 @@ export default function FileList() {
     </th>
   );
 
+  // Uploads still waiting on their receipt can't be acted on — nothing on-chain
+  // refers to them yet — so they stay out of select-all and its checked state.
+  const selectable = fileItems.filter((f) => !f.pending);
+  const allSelected = selectedCount > 0 && selectedCount === selectable.length + folders.length;
+
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "8px" }}>
       <thead>
@@ -39,11 +44,11 @@ export default function FileList() {
               <input
                 type="checkbox"
                 title="Select all"
-                checked={selectedCount === fileItems.length + folders.length}
+                checked={allSelected}
                 onChange={() =>
-                  setSelected(selectedCount === fileItems.length + folders.length
+                  setSelected(allSelected
                     ? new Set()
-                    : new Set([...fileItems.map((f) => f.cid), ...folders.map(folderKeyOf)]))
+                    : new Set([...selectable.map((f) => f.cid), ...folders.map(folderKeyOf)]))
                 }
                 style={{ width: "16px", height: "16px", accentColor: "#1A73E8", cursor: "pointer" }}
               />
@@ -69,6 +74,7 @@ export default function FileList() {
             <tr
               key={key}
               data-cid={item.type === "file" ? item.cid : folderKeyOf(item)}
+              data-pending={item.pending ? "" : undefined}
               draggable={item.type === "file" || canDragFolder(item)}
               onDragStart={() => item.type === "file" ? onFileDragStart(item) : canDragFolder(item) && onFolderDragStart(item)}
               onDragOver={(e) => { if (item.type === "folder") e.preventDefault(); }}
@@ -80,6 +86,9 @@ export default function FileList() {
                 borderBottom: `1px solid ${theme.border}`,
                 backgroundColor: hoveredKey === key ? theme.hoverRow : "transparent",
                 cursor: "pointer",
+                // Visible but inert until the upload mines: preview, download
+                // and sharing all check the contract, which doesn't know it yet.
+                ...(item.pending ? { opacity: 0.55, pointerEvents: "none" } : null),
               }}
             >
               <td style={{ padding: "10px 0 10px 8px" }}>
@@ -108,7 +117,8 @@ export default function FileList() {
                   <Star size={13} fill="#F29900" color="#F29900" />}
               </td>
               <td style={{ fontSize: "13px", color: theme.subText }}>
-                {item.type === "file"
+                {item.pending ? "Confirming on-chain…"
+                  : item.type === "file"
                   ? (item.is_owner
                     ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you")
                     : (item.owner ? `Shared by ${item.owner.slice(0, 6)}...${item.owner.slice(-4)}` : "Shared with me"))

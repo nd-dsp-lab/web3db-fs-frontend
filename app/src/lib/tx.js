@@ -12,22 +12,36 @@ export class PrepareError extends Error {}
 export function makeTx({ account, api, toast, pushToast, getProvider }) {
   // Backend endpoints only *prepare* transactions; the user must sign and
   // broadcast via MetaMask, then the backend verifies the receipt on-chain.
-  const signAndVerifyTransaction = async (transaction, tId) => {
+  // Signing is the only step the user has to be present for, so it is split
+  // out: uploads sign and return, then verify in the background.
+  const signTransaction = async (transaction, tId) => {
     const provider = await getProvider();
     await ensureSepolia(provider);
     if (tId) toast.update(tId, "Waiting for signature…", "loading");
-    const txHash = await provider.request({
+    return provider.request({
       method: "eth_sendTransaction",
       params: [normalizeTxFields(transaction)],
     });
-    if (tId) toast.update(tId, "Confirming on-chain…", "loading");
+  };
 
+  // Blocks until the transaction mines — the backend waits on the receipt, so
+  // this call is as long as a block. It is also where a mined delete releases
+  // the node's pins, which is why deletes verify inline and never in the
+  // background: a closed tab between broadcast and verify would leave the bytes
+  // pinned forever.
+  const verifyTransaction = async (txHash) => {
     const verifyResponse = await api.post("/verify-upload", { tx_hash: txHash });
     const verifyData = await verifyResponse.json();
     if (!verifyData.success) {
       throw new Error(verifyData.error || "Transaction verification failed");
     }
     return txHash;
+  };
+
+  const signAndVerifyTransaction = async (transaction, tId) => {
+    const txHash = await signTransaction(transaction, tId);
+    if (tId) toast.update(tId, "Confirming on-chain…", "loading");
+    return verifyTransaction(txHash);
   };
 
   // Every on-chain action is the same three steps: POST to the endpoint that
@@ -62,5 +76,5 @@ export function makeTx({ account, api, toast, pushToast, getProvider }) {
     else pushToast(msg, type);
   };
 
-  return { signAndVerifyTransaction, prepareAndSign, reportTxError };
+  return { signTransaction, verifyTransaction, signAndVerifyTransaction, prepareAndSign, reportTxError };
 }

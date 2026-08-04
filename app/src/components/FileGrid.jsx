@@ -77,6 +77,7 @@ export default function FileGrid() {
                 <div
                   key={key}
                   data-cid={item.cid}
+                  data-pending={item.pending ? "" : undefined}
                   draggable
                   onDragStart={() => onFileDragStart(item)}
                   onClick={(e) => {
@@ -89,7 +90,10 @@ export default function FileGrid() {
                   style={{
                     borderRadius: "12px", overflow: "hidden", cursor: "pointer",
                     backgroundColor: hoveredKey === key ? theme.tileHover : theme.tile,
+                    // Visible but inert until the upload mines — see FileList
+                    ...(item.pending ? { opacity: 0.55, pointerEvents: "none" } : null),
                   }}
+                  title={item.pending ? "Confirming on-chain…" : undefined}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 6px 10px 14px" }}>
                     <SelectBox cid={item.cid} visible={hoveredKey === key || someSelected} />
@@ -102,7 +106,9 @@ export default function FileGrid() {
                     margin: "0 8px 8px", height: "110px", borderRadius: "8px", overflow: "hidden",
                     backgroundColor: theme.card, display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    {hasThumbnailFor(item.filename) ? (
+                    {/* No thumbnail for a pending upload: the endpoint checks
+                        the contract for permission and would 403 until it mines. */}
+                    {hasThumbnailFor(item.filename) && !item.pending ? (
                       <Thumbnail
                         cid={item.cid}
                         filename={item.filename}

@@ -1,16 +1,24 @@
 import { isTrashed, fullPathOf, joinPath, parentOf } from "../lib/paths";
 import { TRASH_PREFIX } from "../lib/constants";
+import { pendingUploadRow } from "./usePendingUploads";
 
 // Upload is the one action that doesn't go through prepareAndSign: the file
 // body has to reach IPFS before there is a transaction to sign, so it posts
 // through XHR (for progress) and signs whatever the backend prepares in reply.
 // The same reply can carry follow-up grant transactions when the destination
 // folder is shared.
+//
+// It is also the one action that doesn't wait for its transactions to mine. The
+// user has to be present for the signature and nothing else, so control comes
+// back there: the file shows up straight away as a pending row and the receipts
+// are confirmed in the background. Broadcasting is what commits the upload, so
+// closing the tab mid-confirmation loses the refresh, not the file.
 export function useUploadActions({
   account, api, toast, pushToast, files, retrieveFiles,
   currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, tx,
+  addPendingUploads, dropPendingUploads,
 }) {
-  const { signAndVerifyTransaction, reportTxError } = tx;
+  const { signTransaction, verifyTransaction, reportTxError } = tx;
 
   // XHR instead of fetch: fetch can't report request-body upload progress
   const uploadWithProgress = (url, formData, onProgress) =>
@@ -60,8 +68,69 @@ export function useUploadActions({
     }
   };
 
+  // The rows to show while the transactions mine, read off the prepare
+  // response: one file for /upload, the accepted subset for /upload-folder.
+  // `sizes` is the local file sizes, keyed by whichever of full_path or
+  // filename the caller could form (the two endpoints echo paths differently).
+  const pendingRowsFor = (data, sizes) => {
+    const rows = data.uploaded_files
+      ? data.uploaded_files.map((u) => ({
+          cid: u.cid, filename: u.filename, fullPath: u.full_path, fileFormat: u.file_format,
+        }))
+      : [{ cid: data.cid, filename: data.filename, fullPath: data.full_path, fileFormat: data.fileformat }];
+    return rows.map((r) => pendingUploadRow({
+      ...r,
+      size: sizes[r.fullPath] ?? sizes[r.filename] ?? 0,
+      owner: account,
+    }));
+  };
+
+  // Sign the upload transaction and any inherited-share grants back to back.
+  // No receipt wait between them: the backend prepares the grants with the
+  // upload's nonce offset (see prepare_inherited_grant_transactions), so they
+  // queue in the wallet and mine in order behind it. Returns the hashes to
+  // confirm, plus the note for the toast.
+  const signUploadTransactions = async (data, tId) => {
+    const hashes = [await signTransaction(data.transaction, tId)];
+
+    const shareTxs = data.share_transactions || [];
+    let autoShareNote = "";
+    if (shareTxs.length > 0) {
+      try {
+        for (let i = 0; i < shareTxs.length; i++) {
+          toast.update(tId, `Sharing with folder members (${i + 1}/${shareTxs.length})…`, "loading");
+          hashes.push(await signTransaction(shareTxs[i], tId));
+        }
+        const n = data.auto_shared_with.length;
+        autoShareNote = ` — shared with ${n} ${n > 1 ? "people" : "person"}`;
+      } catch (err) {
+        // The upload itself is already broadcast, so this is a partial success:
+        // the files land, the grants for the rest of the folder's members don't.
+        console.error("Inherited share error:", err);
+        pushToast("Uploaded, but sharing with folder members failed", "error");
+      }
+    }
+    return { hashes, autoShareNote };
+  };
+
+  // Confirm the receipts after the user has been let go. Sequential because the
+  // grants mine behind the upload anyway, and because each wait holds a backend
+  // thread. The pending rows are dropped only after the refresh has landed, so
+  // the file doesn't blink out of the list between the two.
+  const confirmInBackground = async (hashes, rows, firstName) => {
+    try {
+      for (const hash of hashes) await verifyTransaction(hash);
+      await retrieveFiles();
+    } catch (err) {
+      console.error("Upload confirmation failed:", err);
+      pushToast(`"${firstName}" wasn't confirmed on-chain — it was not saved`, "error");
+    } finally {
+      dropPendingUploads(rows.map((r) => r.cid));
+    }
+  };
+
   // Shared by the New-menu inputs and desktop drag-and-drop
-  const submitUpload = async (endpoint, formData, count, firstName, onPrepared) => {
+  const submitUpload = async (endpoint, formData, count, firstName, sizes, onPrepared) => {
     const label = count > 1 ? `Uploading ${count} files` : `Uploading "${firstName}"`;
     const tId = toast.loading(`${label}… 0%`, { progress: 0 });
     try {
@@ -95,29 +164,18 @@ export function useUploadActions({
         return;
       }
       onPrepared?.();
-      await signAndVerifyTransaction(data.transaction, tId);
-
       // Inherited folder sharing: the destination folder is shared, so the
       // backend prepared grant txs (one per recipient) for the new files
-      const shareTxs = data.share_transactions || [];
-      let autoShareNote = "";
-      if (shareTxs.length > 0) {
-        try {
-          for (let i = 0; i < shareTxs.length; i++) {
-            toast.update(tId, `Sharing with folder members (${i + 1}/${shareTxs.length})…`, "loading");
-            await signAndVerifyTransaction(shareTxs[i], tId);
-          }
-          const n = data.auto_shared_with.length;
-          autoShareNote = ` — shared with ${n} ${n > 1 ? "people" : "person"}`;
-        } catch (err) {
-          console.error("Inherited share error:", err);
-          pushToast("Uploaded, but sharing with folder members failed", "error");
-        }
-      }
+      const { hashes, autoShareNote } = await signUploadTransactions(data, tId);
+
+      // Signed and broadcast — the user is done. Show the files as pending and
+      // let the receipts confirm on their own.
+      const rows = pendingRowsFor(data, sizes);
+      addPendingUploads(rows);
 
       const skippedNote = skipped > 0 ? ` (${skipped} skipped — already exist)` : "";
-      toast.update(tId, (uploadedCount > 1 ? `Uploaded ${uploadedCount} files` : `Uploaded "${firstName}"`) + autoShareNote + skippedNote, "success", { duration: skipped ? 8000 : undefined });
-      retrieveFiles();
+      toast.update(tId, (uploadedCount > 1 ? `Uploaded ${uploadedCount} files` : `Uploaded "${firstName}"`) + autoShareNote + skippedNote + " — confirming on-chain", "success", { duration: skipped ? 8000 : undefined });
+      confirmInBackground(hashes, rows, firstName);
     } catch (err) {
       reportTxError("Upload", err, tId);
     }
@@ -129,20 +187,24 @@ export function useUploadActions({
 
     const formData = new FormData();
     formData.append("user_address", account);
+    const sizes = {};
 
     if (uploadMode === "folder") {
       for (const file of inputFiles) {
         const relative = file.webkitRelativePath || file.name;
+        const path = joinPath(currentPath, relative);
         formData.append("files", file);
-        formData.append("paths", joinPath(currentPath, relative));
+        formData.append("paths", path);
+        sizes[path] = file.size;
       }
     } else {
       formData.append("file", inputFiles[0]);
       formData.append("folder_path", currentPath);
+      sizes[inputFiles[0].name] = inputFiles[0].size;
     }
 
     const endpoint = uploadMode === "folder" ? "/upload-folder" : "/upload";
-    await submitUpload(endpoint, formData, inputFiles.length, inputFiles[0].name, () => { e.target.value = null; });
+    await submitUpload(endpoint, formData, inputFiles.length, inputFiles[0].name, sizes, () => { e.target.value = null; });
   };
 
   // Desktop drag-and-drop: items are [{ file, rel }] where rel keeps any
@@ -154,20 +216,24 @@ export function useUploadActions({
 
     const formData = new FormData();
     formData.append("user_address", account);
+    const sizes = {};
 
     let endpoint;
     if (items.length === 1 && !items[0].rel.includes("/")) {
       endpoint = "/upload";
       formData.append("file", items[0].file);
       formData.append("folder_path", currentPath);
+      sizes[items[0].file.name] = items[0].file.size;
     } else {
       endpoint = "/upload-folder";
       for (const { file, rel } of items) {
+        const path = joinPath(currentPath, rel);
         formData.append("files", file);
-        formData.append("paths", joinPath(currentPath, rel));
+        formData.append("paths", path);
+        sizes[path] = file.size;
       }
     }
-    await submitUpload(endpoint, formData, items.length, items[0].file.name);
+    await submitUpload(endpoint, formData, items.length, items[0].file.name, sizes);
   };
 
   return { handleUpload, handleDropUpload };

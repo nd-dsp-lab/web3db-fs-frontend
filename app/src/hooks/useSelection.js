@@ -47,7 +47,9 @@ export function useSelection({ view, currentPath, searchQuery }) {
       };
       setBand(rect);
       const hits = new Set(base);
-      contentRef.current?.querySelectorAll("[data-cid]").forEach((el) => {
+      // :not([data-pending]) — an upload that hasn't mined yet isn't on-chain,
+      // so every action a selection leads to would revert on it.
+      contentRef.current?.querySelectorAll("[data-cid]:not([data-pending])").forEach((el) => {
         const r = el.getBoundingClientRect();
         if (r.left < rect.right && r.right > rect.left && r.top < rect.bottom && r.bottom > rect.top) {
           hits.add(el.dataset.cid);

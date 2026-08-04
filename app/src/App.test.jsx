@@ -270,9 +270,9 @@ describe("theme", () => {
 });
 
 // --- concurrent refreshes and auth retries -------------------------------
-// retrieveFiles depends on emptyFolders, so creating a folder (a purely local
-// operation) triggers a second refresh. That is the real path by which two
-// file fetches end up in flight at once.
+// Any action that finishes refreshes the list, so a slow mount fetch and an
+// action's fetch end up in flight together. Deleting an empty folder is the
+// cheapest such action — no transaction to sign, one refresh at the end.
 
 describe("retrieveFiles ordering", () => {
   test("a slow earlier refresh cannot overwrite a newer file list", async () => {
@@ -284,9 +284,8 @@ describe("retrieveFiles ordering", () => {
       if (path.startsWith("/storage-stats")) return Promise.resolve({ json: async () => ({ disk_free: 1000, disk_total: 5000, ipfs_storage_max: 7000, ipfs_repo_size: 4000 }) });
       if (!path.startsWith("/?user_address")) return Promise.resolve({ json: async () => ({}) });
       call += 1;
-      // Mount fires more than one refresh on its own (loading emptyFolders
-      // changes retrieveFiles), so defer whichever lands first and let every
-      // later one resolve immediately with the newer list.
+      // Defer the mount fetch and let every later one resolve immediately
+      // with the newer list.
       if (call === 1) return new Promise((res) => { releaseFirst = () => res({ json: async () => ({ user_files: older }) }); });
       return Promise.resolve({ json: async () => ({ user_files: newer }) });
     });
@@ -297,7 +296,7 @@ describe("retrieveFiles ordering", () => {
     await waitFor(() => expect(mockCapture.props.account).toBe(ADDR));
 
     // a later refresh resolves right away with the newer list
-    await act(async () => { mockCapture.props.handleCreateFolder("docs"); });
+    await act(async () => { await mockCapture.props.handleDeleteFolder("/gone"); });
     await waitFor(() => expect(mockCapture.props.displayItems.some((f) => f.cid === "new")).toBe(true));
 
     // now the stale first response finally lands — it must be discarded

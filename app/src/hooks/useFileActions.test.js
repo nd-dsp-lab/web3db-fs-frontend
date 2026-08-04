@@ -33,7 +33,7 @@ function setup({
   currentPath = "/",
   initialEmptyFolders = [],
 } = {}) {
-  const calls = { api: [], toasts: [], provider: [], retrieveFiles: 0, view: [], opts: [], confirms: [] };
+  const calls = { api: [], toasts: [], provider: [], retrieveFiles: 0, view: [], opts: [], confirms: [], pending: [], dropped: [] };
 
   const api = {
     url: (p) => `http://api${p}`,
@@ -86,6 +86,8 @@ function setup({
     setCurrentPath: (p) => calls.view.push(p),
     setSearchQuery: () => {},
     confirm: async (opts) => { calls.confirms.push(opts); return confirmAnswer; },
+    addPendingUploads: (rows) => calls.pending.push(...rows),
+    dropPendingUploads: (cids) => calls.dropped.push(...cids),
   });
 
   return { actions, calls, getEmptyFolders: () => emptyFolders };
@@ -116,6 +118,9 @@ const posted = (calls, path) => calls.api.filter((c) => c.path === path).map((c)
 const messages = (calls) => calls.toasts.map(([, m]) => m);
 const types = (calls) => calls.toasts.map(([t]) => t);
 const said = (calls, text) => messages(calls).some((m) => String(m).includes(text));
+// Uploads confirm their receipts after returning, so the assertions on that
+// part have to let the microtask queue drain first.
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -430,15 +435,43 @@ describe("upload", () => {
     expect(said(calls, "content-addressed")).toBe(true);
   });
 
-  test("a successful upload signs once and refreshes", async () => {
+  test("a successful upload hands control back at the signature, then confirms", async () => {
     const { actions, calls } = setup({
-      uploadResponse: { status: 200, body: { transaction: { to: "0x" }, uploaded_files: [{ cid: "c1" }] } },
+      uploadResponse: {
+        status: 200,
+        body: { transaction: { to: "0x" }, uploaded_files: [{ cid: "c1", filename: "a.pdf", full_path: "a.pdf" }] },
+      },
     });
     await actions.handleDropUpload([{ file: new File(["x"], "a.pdf"), rel: "a.pdf" }]);
 
+    // Signed and reported done without waiting on the receipt — the file shows
+    // as a pending row instead.
     expect(calls.provider).toEqual(["eth_chainId", "eth_sendTransaction"]);
-    expect(calls.retrieveFiles).toBe(1);
+    expect(calls.pending.map((r) => r.cid)).toEqual(["c1"]);
     expect(types(calls)).toContain("success");
+    expect(calls.retrieveFiles).toBe(0);
+    expect(calls.dropped).toEqual([]);
+
+    await flush();
+    expect(posted(calls, "/verify-upload")).toEqual([{ tx_hash: "0xtxhash" }]);
+    expect(calls.retrieveFiles).toBe(1);
+    expect(calls.dropped).toEqual(["c1"]);   // the chain list has it now
+  });
+
+  test("a pending upload that never confirms is withdrawn and reported", async () => {
+    const { actions, calls } = setup({
+      responses: { "/verify-upload": { success: false, error: "timed out" } },
+      uploadResponse: {
+        status: 200,
+        body: { transaction: { to: "0x" }, uploaded_files: [{ cid: "c1", filename: "a.pdf", full_path: "a.pdf" }] },
+      },
+    });
+    await actions.handleDropUpload([{ file: new File(["x"], "a.pdf"), rel: "a.pdf" }]);
+    await flush();
+
+    expect(calls.dropped).toEqual(["c1"]);
+    expect(calls.retrieveFiles).toBe(0);
+    expect(said(calls, "wasn't confirmed on-chain")).toBe(true);
   });
 
   test("an upload into a shared folder signs a grant per recipient", async () => {
@@ -447,7 +480,7 @@ describe("upload", () => {
         status: 200,
         body: {
           transaction: { to: "0x" },
-          uploaded_files: [{ cid: "c1" }],
+          uploaded_files: [{ cid: "c1", filename: "a.pdf", full_path: "a.pdf" }],
           share_transactions: [{ to: "0xa" }, { to: "0xb" }],
           auto_shared_with: ["0xa", "0xb"],
         },
@@ -455,9 +488,16 @@ describe("upload", () => {
     });
     await actions.handleDropUpload([{ file: new File(["x"], "a.pdf"), rel: "a.pdf" }]);
 
-    // one upload signature + one per recipient
+    // one upload signature + one per recipient, all signed back to back with
+    // no receipt wait in between (the grants are nonce-offset behind the upload)
     expect(calls.provider.filter((m) => m === "eth_sendTransaction")).toHaveLength(3);
     expect(said(calls, "shared with 2 people")).toBe(true);
+    // Signing is finished while the receipts are not — confirmation runs on
+    // after the call returns.
+    expect(posted(calls, "/verify-upload").length).toBeLessThan(3);
+
+    await flush();
+    expect(posted(calls, "/verify-upload")).toHaveLength(3);
   });
 
   test("a folder drop with several files uses the batch endpoint", async () => {

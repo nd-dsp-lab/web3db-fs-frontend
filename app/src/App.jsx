@@ -12,6 +12,7 @@ import { useToasts } from "./hooks/useToasts";
 import { useEmptyFolders } from "./hooks/useEmptyFolders";
 import { useStarred } from "./hooks/useStarred";
 import { useDisplayItems } from "./hooks/useDisplayItems";
+import { usePendingUploads, mergePendingUploads } from "./hooks/usePendingUploads";
 import { useFileActions } from "./hooks/useFileActions";
 import { useConfirmDialog } from "./hooks/useConfirm";
 import { WorkspaceContext } from "./contexts/WorkspaceContext";
@@ -28,8 +29,7 @@ function App() {
   const api = useMemo(() => makeApi(API_BASE_URL), []);
 
   // --- STATE MANAGEMENT ---
-  const [files, setFiles] = useState([]);
-  const [fileTree, setFileTree] = useState(null);
+  const [chainFiles, setChainFiles] = useState([]);
   const [currentPath, setCurrentPath] = useState("/");
   const [view, setView] = useState("my-drive");
   const [searchQuery, setSearchQuery] = useState("");
@@ -75,6 +75,20 @@ function App() {
   const { emptyFolders, setEmptyFolders, persistEmptyFolders } = useEmptyFolders(account);
   const { starred, starredFolders, toggleStar, toggleStarFolder, toggleStarMany, remapStarredFolders } = useStarred(account);
 
+  // Files the chain reports, plus uploads that are signed but not yet mined.
+  // Everything downstream reads the merged list, so a pending upload is a
+  // normal (if inert) row until the refresh that follows its receipt.
+  const { pendingUploads, addPendingUploads, dropPendingUploads, clearPendingUploads } = usePendingUploads();
+  const files = useMemo(() => mergePendingUploads(chainFiles, pendingUploads), [chainFiles, pendingUploads]);
+
+  // The tree only holds files the user owns; files shared to them are shown
+  // flat in the Shared view (their folder_path is the owner's). Trashed files
+  // live under /.trash and are excluded from the tree.
+  const fileTree = useMemo(
+    () => buildFileTree(files.filter((f) => f.is_owner && !isTrashed(f)), emptyFolders),
+    [files, emptyFolders]
+  );
+
   // Downloads and thumbnails are permission-checked server-side. The wallet
   // signs a login message once (per 24h); the backend returns an HMAC token
   // tied to the address, cached in localStorage. Populated by the effect below.
@@ -93,8 +107,8 @@ function App() {
     authRequested.current.delete(account);
     setAuthToken(null);
     await logout();
-    setFiles([]);
-    setFileTree(null);
+    setChainFiles([]);
+    clearPendingUploads();
     setCurrentPath("/");
     setSearchQuery("");
   };
@@ -191,18 +205,14 @@ function App() {
       const filesList = data.user_files || [];
       if (seq !== fetchSeq.current) return; // superseded by a later refresh
 
-      setFiles(filesList);
-      // The tree only holds files the user owns; files shared to them are
-      // shown flat in the Shared view (their folder_path is the owner's).
-      // Trashed files live under /.trash and are excluded from the tree.
-      setFileTree(buildFileTree(filesList.filter((f) => f.is_owner && !isTrashed(f)), emptyFolders));
+      setChainFiles(filesList);
     } catch (err) {
       console.error("Error retrieving files:", err);
       // Otherwise an outage just leaves the last-good list on screen with no
       // sign anything is wrong.
       if (seq === fetchSeq.current) toast.error("Couldn't load your files — check your connection");
     }
-  }, [account, emptyFolders, api]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [account, api]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (account) retrieveFiles();
@@ -221,6 +231,7 @@ function App() {
     handleShare, handleUnshare, handleShareCids, handleUnshareCids, handleMove, handleTrash, handleRestore, handleDelete, handleBulkTrash, handleBulkMove, handleBulkRestore, handleBulkDelete, handleRestoreFolder, handleDeleteFolderForever, handleTrashFolder, handleRenameFolder, handleMoveFolder, handleCreateFolder, handleDeleteFolder, handleUpload, handleDropUpload,
   } = useFileActions({
     account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
+    addPendingUploads, dropPendingUploads,
   });
 
   // --- FOLDER SHARE ---

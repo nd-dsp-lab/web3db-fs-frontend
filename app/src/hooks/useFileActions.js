@@ -14,6 +14,7 @@ import { useUploadActions } from "./useUploadActions";
 // pass across.
 export function useFileActions({
   account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
+  addPendingUploads, dropPendingUploads,
 }) {
   const tx = makeTx({ account, api, toast, pushToast, getProvider });
 
@@ -35,6 +36,7 @@ export function useFileActions({
   const uploads = useUploadActions({
     account, api, toast, pushToast, files, retrieveFiles,
     currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, tx,
+    addPendingUploads, dropPendingUploads,
   });
 
   // runBatchMove is internal wiring for the folder actions, not an action App
