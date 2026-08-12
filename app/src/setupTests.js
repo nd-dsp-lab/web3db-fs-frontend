@@ -1,6 +1,15 @@
 import "@testing-library/jest-dom";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
+import { webcrypto } from "node:crypto";
+
+// jsdom has no crypto.subtle; the attestation verifier needs real WebCrypto.
+// Node's implementation is the same API.
+if (!globalThis.crypto?.subtle) {
+  Object.defineProperty(globalThis, "crypto", {
+    value: webcrypto, configurable: true, writable: true,
+  });
+}
 
 // CRA/Jest unmounted the tree between tests automatically; under Vitest we
 // register the same cleanup explicitly.

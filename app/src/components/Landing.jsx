@@ -1,6 +1,7 @@
 import { Lock, KeyRound, Network, Sun, Moon } from "lucide-react";
 import Logo from "./Logo";
 import DrivePreview from "./DrivePreview";
+import AttestationBadge from "./AttestationBadge";
 import { makeTheme, BLUE, FONT } from "../lib/theme";
 import { useWorkspace } from "../contexts/WorkspaceContext";
 
@@ -30,7 +31,7 @@ const FEATURES = [
 ];
 
 export default function Landing() {
-  const { darkMode, toggleTheme, connectWallet } = useWorkspace();
+  const { darkMode, toggleTheme, connectWallet, api } = useWorkspace();
   const theme = makeTheme(darkMode);
 
   const signIn = (
@@ -62,6 +63,7 @@ export default function Landing() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <AttestationBadge theme={theme} api={api} />
           <button
             onClick={toggleTheme}
             title={darkMode ? "Switch to light mode" : "Switch to dark mode"}

@@ -4,7 +4,13 @@ import Landing from "./Landing";
 import { WorkspaceContext } from "../contexts/WorkspaceContext";
 
 function mountLanding(overrides = {}) {
-  const ctx = { darkMode: false, toggleTheme: vi.fn(), connectWallet: vi.fn(), ...overrides };
+  const ctx = {
+    darkMode: false, toggleTheme: vi.fn(), connectWallet: vi.fn(),
+    // AttestationBadge fetches on mount; a never-settling promise parks it
+    // in "checking" so its state update never fires mid-test
+    api: { get: vi.fn().mockReturnValue(new Promise(() => {})) },
+    ...overrides,
+  };
   render(
     <WorkspaceContext.Provider value={ctx}>
       <Landing />

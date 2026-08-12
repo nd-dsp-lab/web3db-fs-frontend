@@ -16,6 +16,9 @@ function renderHeader(over = {}) {
     darkMode: false, toggleTheme: vi.fn(),
     account: null, connectWallet: vi.fn(), disconnectWallet: vi.fn(),
     user: null, confirm: vi.fn().mockResolvedValue(true),
+    // AttestationBadge fetches on mount; a never-settling promise parks it
+    // in "checking" so its state update never fires mid-test
+    api: { get: vi.fn().mockReturnValue(new Promise(() => {})) },
     ...over,
   };
   render(

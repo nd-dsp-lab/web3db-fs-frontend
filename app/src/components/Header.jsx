@@ -1,11 +1,12 @@
 import { Search, Sun, Moon } from "lucide-react";
 import { useLayout } from "../contexts/LayoutContext";
+import AttestationBadge from "./AttestationBadge";
 
 // Top bar: search box, theme toggle, and the account chip / sign-in button.
 export default function Header() {
   const {
     theme, searchQuery, setSearchQuery, darkMode, toggleTheme,
-    account, connectWallet, disconnectWallet, user, confirm,
+    account, connectWallet, disconnectWallet, user, confirm, api,
   } = useLayout();
   // Account chip: social users see name/email, wallet users see the address
   const displayName = user?.google?.name || user?.email?.address ||
@@ -28,6 +29,8 @@ export default function Header() {
           }}
         />
       </div>
+
+      <AttestationBadge theme={theme} api={api} />
 
       <button
         onClick={toggleTheme}
