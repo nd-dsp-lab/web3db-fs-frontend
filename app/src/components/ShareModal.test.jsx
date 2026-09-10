@@ -46,9 +46,15 @@ test("shows the empty state once the list loads", async () => {
 });
 
 test("lists the addresses a file is already shared with", async () => {
-  mockShared([OTHER]);
+  mockShared([{ address: OTHER, expires_at_block: null }]);
   setup();
   expect(await screen.findByText("0x3081...809a")).toBeInTheDocument();
+});
+
+test("shows the expiry block for a time-limited grant, and nothing for a permanent one", async () => {
+  mockShared([{ address: OTHER, expires_at_block: 9241300 }]);
+  setup();
+  expect(await screen.findByText(/Expires at block 9,241,300/)).toBeInTheDocument();
 });
 
 test("sharing a recipient calls onShare and clears the input", async () => {
@@ -59,8 +65,31 @@ test("sharing a recipient calls onShare and clears the input", async () => {
   fireEvent.change(input, { target: { value: OTHER } });
   fireEvent.click(screen.getByRole("button", { name: /Share/ }));
 
-  await waitFor(() => expect(props.onShare).toHaveBeenCalledWith("c1", OTHER, "a.pdf"));
+  await waitFor(() => expect(props.onShare).toHaveBeenCalledWith("c1", OTHER, "a.pdf", undefined));
   await waitFor(() => expect(input.value).toBe(""));
+});
+
+test("typing a block count passes it straight through to onShare", async () => {
+  const props = setup();
+  await screen.findByText(/No one else has access yet/i);
+
+  const input = screen.getByPlaceholderText(/Email or Ethereum address/i);
+  fireEvent.change(input, { target: { value: OTHER } });
+  fireEvent.change(screen.getByPlaceholderText("Permanent"), { target: { value: "500" } });
+  fireEvent.click(screen.getByRole("button", { name: /Share/ }));
+
+  await waitFor(() => expect(props.onShare).toHaveBeenCalledWith("c1", OTHER, "a.pdf", 500));
+});
+
+test("leaving the block count blank shares permanently", async () => {
+  const props = setup();
+  await screen.findByText(/No one else has access yet/i);
+
+  const input = screen.getByPlaceholderText(/Email or Ethereum address/i);
+  fireEvent.change(input, { target: { value: OTHER } });
+  fireEvent.click(screen.getByRole("button", { name: /Share/ }));
+
+  await waitFor(() => expect(props.onShare).toHaveBeenCalledWith("c1", OTHER, "a.pdf", undefined));
 });
 
 test("Enter in the input triggers the share", async () => {
@@ -75,7 +104,7 @@ test("Enter in the input triggers the share", async () => {
 });
 
 test("revoking access confirms then calls onUnshare", async () => {
-  mockShared([OTHER]);
+  mockShared([{ address: OTHER, expires_at_block: null }]);
   const props = setup();
   await screen.findByText("0x3081...809a");
 

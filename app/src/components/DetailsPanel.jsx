@@ -135,8 +135,15 @@ export default function DetailsPanel({ file, account, authToken, api, onClose, t
           ) : sharedUsers.length === 0 ? (
             <div style={{ fontSize: "13px", color: theme.subText }}>Only you</div>
           ) : (
-            sharedUsers.map((addr) => (
-              <div key={addr} style={{ fontSize: "13px", fontFamily: "monospace", marginBottom: "4px" }}>{short(addr)}</div>
+            sharedUsers.map(({ address, expires_at_block }) => (
+              <div key={address} style={{ marginBottom: "4px" }}>
+                <div style={{ fontSize: "13px", fontFamily: "monospace" }}>{short(address)}</div>
+                {expires_at_block != null && (
+                  <div style={{ fontSize: "11px", color: theme.subText }}>
+                    Expires at block {expires_at_block.toLocaleString()}
+                  </div>
+                )}
+              </div>
             ))
           )}
         </>
@@ -182,14 +189,28 @@ export default function DetailsPanel({ file, account, authToken, api, onClose, t
 
           <div style={{ fontSize: "12px", color: theme.subText, margin: "6px 0 8px" }}>Who has access</div>
           {!file.is_owner ? (
-            <div style={{ fontSize: "13px" }}>Shared with you by {short(file.owner)}</div>
+            <div>
+              <div style={{ fontSize: "13px" }}>Shared with you by {short(file.owner)}</div>
+              {file.expires_at_block != null && (
+                <div style={{ fontSize: "11px", color: theme.subText, marginTop: "2px" }}>
+                  Expires at block {file.expires_at_block.toLocaleString()}
+                </div>
+              )}
+            </div>
           ) : sharedUsers === null ? (
             <div style={{ fontSize: "13px", color: theme.subText }}>Loading…</div>
           ) : sharedUsers.length === 0 ? (
             <div style={{ fontSize: "13px", color: theme.subText }}>Only you</div>
           ) : (
-            sharedUsers.map((addr) => (
-              <div key={addr} style={{ fontSize: "13px", fontFamily: "monospace", marginBottom: "4px" }}>{short(addr)}</div>
+            sharedUsers.map(({ address, expires_at_block }) => (
+              <div key={address} style={{ marginBottom: "4px" }}>
+                <div style={{ fontSize: "13px", fontFamily: "monospace" }}>{short(address)}</div>
+                {expires_at_block != null && (
+                  <div style={{ fontSize: "11px", color: theme.subText }}>
+                    Expires at block {expires_at_block.toLocaleString()}
+                  </div>
+                )}
+              </div>
             ))
           )}
         </>

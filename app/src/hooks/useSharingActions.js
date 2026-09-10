@@ -48,14 +48,14 @@ export function useSharingActions({
       .catch((e) => console.warn("Share notification failed:", e));
   };
 
-  const handleShare = async (cid, recipient, filename) => {
+  const handleShare = async (cid, recipient, filename, durationBlocks) => {
     if (!account) return;
     let tId;
     try {
       const to = await confirmRecipient(recipient, false);
       if (!to) return;
       tId = toast.loading("Preparing share…");
-      await prepareAndSign("/share", { cid, to_address: to.address }, tId);
+      await prepareAndSign("/share", { cid, to_address: to.address, duration_blocks: durationBlocks }, tId);
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       notifyShare(to.email, filename || "a file");
       retrieveFiles();
@@ -80,7 +80,7 @@ export function useSharingActions({
   // Share many cids with one recipient — one grantFiles tx. Used by folder
   // share and multi-select share; notifyName labels the email notification
   // (e.g. 'the folder "docs"' or '3 items').
-  const handleShareCids = async (cids, recipient, notifyName) => {
+  const handleShareCids = async (cids, recipient, notifyName, durationBlocks) => {
     if (!account) return;
     if (!cids.length) {
       toast.info("Nothing to share");
@@ -91,7 +91,7 @@ export function useSharingActions({
       const to = await confirmRecipient(recipient, true);
       if (!to) return;
       tId = toast.loading(`Sharing ${cids.length} file(s)…`);
-      await prepareAndSign("/share-batch", { cids, to_address: to.address }, tId);
+      await prepareAndSign("/share-batch", { cids, to_address: to.address, duration_blocks: durationBlocks }, tId);
       toast.update(tId, `Shared with ${recipient.trim()}`, "success");
       notifyShare(to.email, notifyName);
       retrieveFiles();
