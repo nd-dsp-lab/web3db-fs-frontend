@@ -6,6 +6,7 @@ export default function ShareModal({
   file, account, authToken, api, onClose, onShare, onUnshare, darkMode, confirm,
 }) {
   const [recipient, setRecipient] = useState("");
+  const [durationBlocksInput, setDurationBlocksInput] = useState("");
   const [sharedUsers, setSharedUsers] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [busy, setBusy] = useState(null); // "share" | address being revoked | null
@@ -38,8 +39,11 @@ export default function ShareModal({
     if (!to) return;
     setBusy("share");
     try {
-      await onShare(file.cid, to, file.filename);
+      const parsed = parseInt(durationBlocksInput, 10);
+      const durationBlocks = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+      await onShare(file.cid, to, file.filename, durationBlocks);
       setRecipient("");
+      setDurationBlocksInput("");
       await fetchSharedUsers();
     } finally {
       setBusy(null);
@@ -97,7 +101,7 @@ export default function ShareModal({
         )}
 
         {/* Recipient input */}
-        <div style={{ display: "flex", gap: "10px", marginBottom: "22px" }}>
+        <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
           <input
             type="text"
             placeholder="Email or Ethereum address (0x...)"
@@ -128,6 +132,24 @@ export default function ShareModal({
           </button>
         </div>
 
+        {/* Access duration */}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "22px" }}>
+          <label style={{ fontSize: "13px", color: t.subText }}>Expires after (blocks):</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Permanent"
+            value={durationBlocksInput}
+            disabled={!!busy}
+            onChange={(e) => setDurationBlocksInput(e.target.value)}
+            style={{
+              width: "120px", padding: "6px 10px", borderRadius: "8px", fontSize: "13px",
+              border: `1px solid ${t.border}`, backgroundColor: t.inputBg, color: t.text, outline: "none",
+            }}
+          />
+        </div>
+
         {/* People with access */}
         <div style={{ fontSize: "14px", fontWeight: 500, marginBottom: "10px" }}>People with access</div>
         <div style={{ maxHeight: "220px", overflowY: "auto" }}>
@@ -152,9 +174,9 @@ export default function ShareModal({
             <div style={{ padding: "14px 4px", color: t.subText, fontSize: "13px" }}>
               No one else has access yet.
             </div>
-          ) : sharedUsers.map((addr) => (
+          ) : sharedUsers.map(({ address, expires_at_block }) => (
             <div
-              key={addr}
+              key={address}
               style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 4px", borderRadius: "8px" }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = t.hoverRow}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
@@ -162,10 +184,17 @@ export default function ShareModal({
               <div style={{
                 width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "#5F6368",
                 color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 600,
-              }}>{addr.slice(2, 3).toUpperCase()}</div>
-              <div style={{ flex: 1, fontSize: "13px", fontFamily: "monospace" }} title={addr}>{short(addr)}</div>
+              }}>{address.slice(2, 3).toUpperCase()}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "13px", fontFamily: "monospace" }} title={address}>{short(address)}</div>
+                {expires_at_block != null && (
+                  <div style={{ fontSize: "11px", color: t.subText }}>
+                    Expires at block {expires_at_block.toLocaleString()}
+                  </div>
+                )}
+              </div>
               <button
-                onClick={() => doRevoke(addr)}
+                onClick={() => doRevoke(address)}
                 disabled={!!busy}
                 title="Remove access"
                 style={{
@@ -173,7 +202,7 @@ export default function ShareModal({
                   color: "#d9534f", padding: "6px", display: "flex",
                 }}
               >
-                {busy === addr
+                {busy === address
                   ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
                   : <Trash2 size={15} />}
               </button>

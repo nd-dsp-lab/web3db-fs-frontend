@@ -52,7 +52,7 @@ test("an owned file shows its metadata and 'Only you' when unshared", async () =
 });
 
 test("an owned file lists the addresses it is shared with", async () => {
-  mockShared([OTHER]);
+  mockShared([{ address: OTHER, expires_at_block: null }]);
   setup({ file: { cid: "c1", filename: "a.pdf", is_owner: true, size: 1, folder_path: "/" } });
   expect(await screen.findByText("0x3081...809a")).toBeInTheDocument();
 });
@@ -67,6 +67,16 @@ test("a file shared to me credits the owner and skips the fetch", () => {
   setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, owner: OTHER, size: 1, folder_path: "/" } });
   expect(screen.getByText(new RegExp(`Shared with you by`, "i"))).toBeInTheDocument();
   expect(global.fetch).not.toHaveBeenCalled();
+});
+
+test("a time-limited share shown to the recipient displays its expiry block", () => {
+  setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, owner: OTHER, size: 1, folder_path: "/", expires_at_block: 9241300 } });
+  expect(screen.getByText(/Expires at block 9,241,300/)).toBeInTheDocument();
+});
+
+test("a permanent share shown to the recipient shows no expiry line", () => {
+  setup({ file: { cid: "c1", filename: "a.pdf", is_owner: false, owner: OTHER, size: 1, folder_path: "/", expires_at_block: null } });
+  expect(screen.queryByText(/Expires at block/)).not.toBeInTheDocument();
 });
 
 test("a trashed file reports its location as Trash", () => {

@@ -3,7 +3,7 @@
 // one place. `makeApi(baseUrl)` binds the backend URL.
 
 export function makeApi(baseUrl) {
-  const url = (path) => `${baseUrl}${path}`;
+  const url = (path) => `${baseUrl.replace(/\/$/, "")}${path}`;
   const get = (path, headers = {}) => fetch(url(path), { headers });
   const post = (path, body, headers = {}) =>
     fetch(url(path), {

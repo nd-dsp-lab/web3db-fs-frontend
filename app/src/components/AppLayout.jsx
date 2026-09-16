@@ -397,10 +397,11 @@ export default function AppLayout() {
           confirm={confirm}
           onClose={() => setShareFile(null)}
           onShare={shareFile.folder
-            ? (_cid, recipient) => handleShareCids(
+            ? (_cid, recipient, _filename, durationBlocks) => handleShareCids(
                 shareFile.cids,
                 recipient,
-                shareFile.selection ? `${shareFile.cids.length} file(s)` : `the folder "${shareFile.filename}"`
+                shareFile.selection ? `${shareFile.cids.length} file(s)` : `the folder "${shareFile.filename}"`,
+                durationBlocks
               )
             : handleShare}
           onUnshare={shareFile.folder
