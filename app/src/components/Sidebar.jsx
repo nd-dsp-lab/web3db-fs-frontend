@@ -1,4 +1,4 @@
-import { Plus, HardDrive, Users, Clock, Star, Trash2, Cloud } from "lucide-react";
+import { Plus, HardDrive, Users, Clock, Star, Trash2, Cloud, Share2 } from "lucide-react";
 import { formatBytes } from "../lib/fileTypes";
 import { STORAGE_QUOTA } from "../lib/constants";
 import { MenuPanel, MenuRow } from "./Menu";
@@ -79,6 +79,7 @@ export default function Sidebar() {
       <nav>
         <NavItem id="my-drive" icon={HardDrive} label="My Drive" dropPath="/" />
         <NavItem id="shared" icon={Users} label="Shared with me" />
+        <NavItem id="shared-by-me" icon={Share2} label="Shared with others" />
         <NavItem id="recent" icon={Clock} label="Recent" />
         <NavItem id="starred" icon={Star} label="Starred" />
         <NavItem id="trash" icon={Trash2} label="Trash" />

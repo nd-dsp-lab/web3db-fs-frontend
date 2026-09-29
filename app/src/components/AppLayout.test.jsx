@@ -38,6 +38,8 @@ function makeProps(over = {}) {
     "handleRestoreFolder", "handleDeleteFolderForever", "setView", "setSearchQuery",
     "setSearchType", "setSearchScope", "toggleTheme", "toggleStar", "toggleStarMany",
     "toggleStarFolder", "handleBulkTrash", "handleBulkRestore", "handleBulkDelete", "handleBulkMove",
+    "handleRequestExtension", "handleCancelRequest",
+    "handleApproveRequest", "handleDenyRequest", "refreshRequests",
   ]) fns[name] = vi.fn();
 
   return {
@@ -60,6 +62,8 @@ function makeProps(over = {}) {
     storageQuota: 1000,
     folderCidsOf: () => ["c1"],
     folderStatsOf: noopStats,
+    requests: [],
+    loadingRequests: false,
     confirm: vi.fn().mockResolvedValue(true),
     toast: { loading: vi.fn(() => "t"), update: vi.fn(), success: vi.fn(), info: vi.fn(), error: vi.fn() },
     ...over,
@@ -519,4 +523,185 @@ describe("folders that share a name in a flat view", () => {
     const dupeWarning = warn.mock.calls.some((c) => String(c[0]).includes("same key"));
     expect(dupeWarning).toBe(false);
   });
+});
+
+
+// --- expired shares ---
+// An expired share stays in the listing instead of vanishing, greyed out and
+// still clickable. The click is the whole point: it is the recipient's only
+// way to ask for access back.
+
+const anExpiredFile = (over = {}) => aFile({
+  cid: "cX", filename: "lapsed.pdf", name: "lapsed.pdf",
+  is_owner: false, owner: "0x3081Acc05169336e7875ad9f896bF6511397809a",
+  permissions: 0, is_expired: true, expires_at_block: 400, request_status: "none",
+  ...over,
+});
+
+test("an expired share is dimmed but still accepts clicks", () => {
+  render(<Layout {...makeProps({ displayItems: [anExpiredFile()], view: "shared" })} />);
+  const tile = document.querySelector('[data-cid="cX"]');
+  expect(tile).toHaveStyle({ opacity: "0.55" });
+  // pointerEvents:none is what pending uploads use; an expired tile must not
+  // have it, or the request dialog is unreachable.
+  expect(tile.style.pointerEvents).toBe("");
+});
+
+test("clicking an expired share opens the request dialog, not the preview", () => {
+  render(<Layout {...makeProps({ displayItems: [anExpiredFile()], view: "shared" })} />);
+  fireEvent.click(document.querySelector('[data-cid="cX"]'));
+
+  expect(screen.getByText("Request more time")).toBeInTheDocument();
+  expect(screen.getByText(/access to this file has expired/i)).toBeInTheDocument();
+});
+
+test("clicking a live file still opens the preview", () => {
+  render(<Layout {...makeProps({ displayItems: [aFile({ is_expired: false })] })} />);
+  fireEvent.click(document.querySelector('[data-cid="c1"]'));
+  expect(screen.queryByText("Request more time")).not.toBeInTheDocument();
+});
+
+test("sending a request signs it with the duration asked for", async () => {
+  const props = makeProps({ displayItems: [anExpiredFile()], view: "shared" });
+  render(<Layout {...props} />);
+  fireEvent.click(document.querySelector('[data-cid="cX"]'));
+
+  fireEvent.change(screen.getByPlaceholderText("e.g. 1000"), { target: { value: "250" } });
+  fireEvent.click(screen.getByRole("button", { name: /Send request/ }));
+
+  expect(props.handleRequestExtension).toHaveBeenCalledWith("cX", 250);
+});
+
+test("the request button stays disabled until a duration is entered", () => {
+  render(<Layout {...makeProps({ displayItems: [anExpiredFile()], view: "shared" })} />);
+  fireEvent.click(document.querySelector('[data-cid="cX"]'));
+  expect(screen.getByRole("button", { name: /Send request/ })).toBeDisabled();
+});
+
+test("a pending request offers to withdraw instead of repeating itself", async () => {
+  const props = makeProps({
+    displayItems: [anExpiredFile({ request_status: "pending" })], view: "shared",
+  });
+  render(<Layout {...props} />);
+  fireEvent.click(document.querySelector('[data-cid="cX"]'));
+
+  expect(screen.getByText(/owner hasn't answered yet/i)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Withdraw request/ }));
+  expect(props.handleCancelRequest).toHaveBeenCalledWith("cX");
+});
+
+test("a declined request says so and still allows asking again", () => {
+  render(<Layout {...makeProps({
+    displayItems: [anExpiredFile({ request_status: "denied" })], view: "shared",
+  })} />);
+  fireEvent.click(document.querySelector('[data-cid="cX"]'));
+
+  expect(screen.getByText(/last request was declined/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Ask again/ })).toBeInTheDocument();
+});
+
+test("the context menu on an expired share offers only the request", () => {
+  render(<Layout {...makeProps({ displayItems: [anExpiredFile()], view: "shared" })} />);
+  fireEvent.contextMenu(document.querySelector('[data-cid="cX"]'));
+
+  expect(screen.getByText("Request more time")).toBeInTheDocument();
+  // permissions === 0 and is_owner false already hide the rest
+  expect(screen.queryByText("Download")).not.toBeInTheDocument();
+  expect(screen.queryByText("Share")).not.toBeInTheDocument();
+  expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+});
+
+
+// --- Shared with others (owner side) ---
+// The file list is derived from `files` already in memory; only the pending
+// requests cost a call. Both halves render in the same view.
+
+const aRequest = (over = {}) => ({
+  cid: "cX", filename: "lapsed.pdf",
+  requester: "0x3081Acc05169336e7875ad9f896bF6511397809a",
+  duration_blocks: 500, requested_at_block: 900, ...over,
+});
+
+test("the sidebar offers Shared with others and switches to it", () => {
+  const props = makeProps();
+  render(<Layout {...props} />);
+  fireEvent.click(screen.getByText("Shared with others"));
+  expect(props.setView).toHaveBeenCalledWith("shared-by-me");
+});
+
+test("pending requests are listed with who asked and for how long", () => {
+  render(<Layout {...makeProps({ view: "shared-by-me", requests: [aRequest()] })} />);
+
+  expect(screen.getByText("Pending requests (1)")).toBeInTheDocument();
+  expect(screen.getByText("lapsed.pdf")).toBeInTheDocument();
+  expect(screen.getByText(/asked for 500 blocks/)).toBeInTheDocument();
+});
+
+test("requests show even when nothing is currently shared", () => {
+  // The empty state must not swallow them: a request can outlive the share
+  // that produced it, which is exactly when the owner needs to see it.
+  render(<Layout {...makeProps({ view: "shared-by-me", displayItems: [], requests: [aRequest()] })} />);
+
+  expect(screen.getByText("Pending requests (1)")).toBeInTheDocument();
+  expect(screen.getByText(/haven't shared anything yet/i)).toBeInTheDocument();
+});
+
+test("no panel at all when there is nothing to answer", () => {
+  render(<Layout {...makeProps({ view: "shared-by-me", requests: [] })} />);
+  expect(screen.queryByText(/Pending requests/)).not.toBeInTheDocument();
+});
+
+test("approving grants what was asked for by default", () => {
+  const props = makeProps({ view: "shared-by-me", requests: [aRequest()] });
+  render(<Layout {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: /Approve/ }));
+
+  expect(props.handleApproveRequest).toHaveBeenCalledWith("cX", aRequest().requester, 500);
+});
+
+test("the owner can grant less than was asked for", () => {
+  const props = makeProps({ view: "shared-by-me", requests: [aRequest()] });
+  render(<Layout {...props} />);
+
+  fireEvent.change(screen.getByLabelText(/Blocks to grant/), { target: { value: "50" } });
+  fireEvent.click(screen.getByRole("button", { name: /Approve/ }));
+
+  expect(props.handleApproveRequest).toHaveBeenCalledWith("cX", aRequest().requester, 50);
+});
+
+test("denying takes no duration and grants nothing", () => {
+  const props = makeProps({ view: "shared-by-me", requests: [aRequest()] });
+  render(<Layout {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
+
+  expect(props.handleDenyRequest).toHaveBeenCalledWith("cX", aRequest().requester);
+  expect(props.handleApproveRequest).not.toHaveBeenCalled();
+});
+
+test("two requests on the same file keep their durations apart", () => {
+  const other = "0x1111111111111111111111111111111111111111";
+  const props = makeProps({
+    view: "shared-by-me",
+    requests: [aRequest(), aRequest({ requester: other, duration_blocks: 10 })],
+  });
+  render(<Layout {...props} />);
+
+  const inputs = screen.getAllByLabelText(/Blocks to grant/);
+  fireEvent.change(inputs[0], { target: { value: "77" } });
+  fireEvent.click(screen.getAllByRole("button", { name: /Approve/ })[1]);
+
+  // editing the first row must not leak into the second
+  expect(props.handleApproveRequest).toHaveBeenCalledWith("cX", other, 10);
+});
+
+test("approve is disabled when the grant duration is cleared", () => {
+  const props = makeProps({ view: "shared-by-me", requests: [aRequest()] });
+  render(<Layout {...props} />);
+
+  fireEvent.change(screen.getByLabelText(/Blocks to grant/), { target: { value: "" } });
+  const approve = screen.getByRole("button", { name: /Approve/ });
+  expect(approve).toBeDisabled();
+
+  fireEvent.click(approve);
+  expect(props.handleApproveRequest).not.toHaveBeenCalled();
 });

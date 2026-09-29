@@ -148,3 +148,26 @@ test("the folder lookup is authenticated by token too", async () => {
   const [, init] = global.fetch.mock.calls[0];
   expect(init.headers["x-auth-token"]).toBe("tok");
 });
+
+test("a lapsed recipient is listed with when their access ended, not hidden", async () => {
+  // Dropping them made someone whose access ran out vanish from the list with
+  // no trace they had ever been there.
+  const LAPSED = "0x6e02F541dd762E5077e6d619AA2F2d81371AcABE";
+  mockShared([
+    { address: LAPSED, expires_at_block: 500, lapsed: true },
+    { address: OTHER, expires_at_block: null, lapsed: false },
+  ]);
+  setup();
+
+  expect(await screen.findByText(/Access expired at block 500/)).toBeInTheDocument();
+  expect(screen.getByTitle(LAPSED)).toBeInTheDocument();
+  expect(screen.getByTitle(OTHER)).toBeInTheDocument();
+});
+
+test("a live time-limited grant still reads as expiring, not expired", async () => {
+  mockShared([{ address: OTHER, expires_at_block: 900, lapsed: false }]);
+  setup();
+
+  expect(await screen.findByText(/Expires at block 900/)).toBeInTheDocument();
+  expect(screen.queryByText(/Access expired/)).not.toBeInTheDocument();
+});

@@ -6,6 +6,8 @@ import FileContextMenu from "./FileContextMenu";
 import DetailsPanel from "./DetailsPanel";
 import PreviewModal from "./PreviewModal";
 import ShareModal from "./ShareModal";
+import RequestExtensionModal from "./RequestExtensionModal";
+import ShareRequestsPanel from "./ShareRequestsPanel";
 import NameModal from "./NameModal";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -50,6 +52,7 @@ export default function AppLayout() {
     account, authToken, api, displayItems, currentPath, setCurrentPath,
     uploadFile, setUploadMode, handleCreateFolder, handleRenameFolder, handleMoveFolder, handleMove,
     handleDropUpload, handleShare, handleUnshare, handleShareCids, handleUnshareCids,
+    handleRequestExtension, handleCancelRequest,
     folderCidsOf, folderStatsOf,
     view, setView, searchQuery, setSearchQuery, darkMode,
     starred, toggleStarMany, starredFolders, toast,
@@ -58,6 +61,7 @@ export default function AppLayout() {
   const [viewMode, setViewMode] = useState("grid"); // "grid" | "list"
   const [previewFile, setPreviewFile] = useState(null);
   const [shareFile, setShareFile] = useState(null);
+  const [requestFile, setRequestFile] = useState(null);
   const [hoveredKey, setHoveredKey] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsFile, setDetailsFile] = useState(null);
@@ -244,6 +248,7 @@ export default function AppLayout() {
       <div style={{ fontSize: "16px", color: theme.text, marginBottom: "4px" }}>
         {searchQuery ? "No matching files"
           : view === "shared" ? "Nothing shared with you yet"
+          : view === "shared-by-me" ? "You haven't shared anything yet"
           : view === "recent" ? "No recent files"
           : view === "starred" ? "No starred files"
           : view === "trash" ? "Trash is empty"
@@ -252,6 +257,7 @@ export default function AppLayout() {
       <div style={{ fontSize: "13px" }}>
         {searchQuery ? "Try a different search term."
           : view === "shared" ? "Files that others share with you will show up here."
+          : view === "shared-by-me" ? "Files you share with someone will show up here, along with any requests for more time."
           : view === "recent" ? "Files you upload or receive will show up here, newest first."
           : view === "starred" ? "Right-click a file and choose “Add to starred”."
           : view === "trash" ? "Files you delete are kept here until you delete them forever."
@@ -259,6 +265,11 @@ export default function AppLayout() {
       </div>
     </div>
   );
+
+  // An expired share has nothing to preview -- the thumbnail and download
+  // endpoints both 403 once access lapses -- so opening it offers the way
+  // back instead. The grid and list both route clicks through here.
+  const openFile = (item) => (item.is_expired ? setRequestFile(item) : setPreviewFile(item));
 
   const sectionLabel = (text) => (
     <div style={{ fontSize: "13px", fontWeight: 500, color: theme.subText, margin: "18px 4px 10px" }}>{text}</div>
@@ -274,7 +285,7 @@ export default function AppLayout() {
     folders, fileItems,
     hoveredKey, setHoveredKey,
     selected, setSelected, toggleSelect, someSelected, selectedCount,
-    navigateInto, setPreviewFile,
+    navigateInto, setPreviewFile, openFile, setRequestFile,
     openMenuForFile, openMenuForFolder,
     canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
     folderKeyOf, folderPathOf, folderSharedCount,
@@ -336,6 +347,7 @@ export default function AppLayout() {
 
           {/* CONTENT */}
           <div ref={contentRef} onMouseDown={onBandStart} onContextMenu={onBackgroundContextMenu} style={{ padding: "0 24px 24px", flex: 1, overflowY: "auto" }}>
+            {view === "shared-by-me" && <ShareRequestsPanel />}
             {(!displayItems || displayItems.length === 0) ? emptyState : viewMode === "grid" ? (
               <FileGrid />
             ) : (
@@ -408,6 +420,16 @@ export default function AppLayout() {
             ? (_cid, addr) => handleUnshareCids(shareFile.cids, addr)
             : handleUnshare}
           darkMode={darkMode}
+        />
+      )}
+
+      {requestFile && (
+        <RequestExtensionModal
+          file={requestFile}
+          darkMode={darkMode}
+          onClose={() => setRequestFile(null)}
+          onRequest={handleRequestExtension}
+          onCancelRequest={handleCancelRequest}
         />
       )}
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info } from "lucide-react";
+import { Download, Pencil, Share2, FolderInput, Trash2, ChevronRight, Folder, Star, RotateCcw, Info, Clock } from "lucide-react";
 import { DOWNLOAD } from "../utils/permissions";
 import { useLayout } from "../contexts/LayoutContext";
 import { isTrashed, joinPath } from "../lib/paths";
@@ -41,7 +41,7 @@ export default function FileContextMenu({ x, y, file, onClose }) {
   const {
     theme, fileTree, currentPath, confirm, starred,
     downloadFile, openDetails, setShareFile, promptRenameFile, toggleStar,
-    handleDelete, handleMove, handleTrash, handleRestore,
+    handleDelete, handleMove, handleTrash, handleRestore, setRequestFile,
   } = useLayout();
 
   const inTrash = isTrashed(file);
@@ -123,6 +123,17 @@ export default function FileContextMenu({ x, y, file, onClose }) {
 
   return (
     <MenuPanel ref={menuRef} x={x} y={y} width={180}>
+
+      {/* REQUEST MORE TIME — an expired share has permissions 0, so every
+          action below this is already hidden; this is the only thing left
+          to offer, and the only way back. */}
+      {file.is_expired && (
+        <MenuRow
+          Icon={Clock}
+          label={file.request_status === "pending" ? "Request pending…" : "Request more time"}
+          onClick={() => { onClose(); setRequestFile(file); }}
+        />
+      )}
 
       {/* DOWNLOAD */}
       {(permissions & DOWNLOAD) !== 0 && (

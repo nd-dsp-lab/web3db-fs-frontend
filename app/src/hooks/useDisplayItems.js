@@ -82,6 +82,17 @@ export function useDisplayItems({
       ];
     }
 
+    if (view === "shared-by-me") {
+      // Everything this user has shared with somebody, flat: shared_with_detail
+      // includes recipients whose access has lapsed, so a file stays listed
+      // after its last share expires -- which is exactly when the owner is
+      // most likely to be looking for it. Derived from `files`, already in
+      // memory, so opening the tab costs only the pending-requests call.
+      return active
+        .filter((f) => f.is_owner && (f.shared_with_detail || []).length > 0)
+        .map(asFileItem);
+    }
+
     if (view === "recent") {
       return [...active].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).slice(0, 30).map(asFileItem);
     }

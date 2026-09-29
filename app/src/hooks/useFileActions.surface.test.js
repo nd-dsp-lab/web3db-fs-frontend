@@ -1,9 +1,12 @@
 import { useFileActions } from "./useFileActions";
 
-// The 21 actions App published before the split, listed literally so a key
-// silently gained or lost shows up here.
+// Every action App publishes, listed literally so a key silently gained or
+// lost shows up here. Was 21 before the split; the two request actions were
+// added with share extension requests.
 const EXPECTED = [
   "handleShare", "handleUnshare", "handleShareCids", "handleUnshareCids",
+  "handleRequestExtension", "handleCancelRequest",
+  "handleApproveRequest", "handleDenyRequest",
   "handleMove", "handleTrash", "handleRestore", "handleDelete",
   "handleBulkTrash", "handleBulkMove", "handleBulkRestore", "handleBulkDelete",
   "handleRestoreFolder", "handleDeleteFolderForever", "handleTrashFolder",

@@ -10,7 +10,7 @@ export default function FileGrid() {
     folders, fileItems, theme,
     hoveredKey, setHoveredKey, someSelected,
     toggleSelect, navigateInto, openMenuForFolder, openMenuForFile,
-    canDragFolder, onFolderDragStart, onFolderDrop, onFileDragStart, setPreviewFile,
+    canDragFolder, onFolderDragStart, onFolderDrop, onFileDragStart, openFile,
     folderKeyOf, folderSharedCount, folderPathOf, starredFolders, starred,
     SharedFolderIcon, sectionLabel, highlightName,
     api, authToken,
@@ -82,7 +82,7 @@ export default function FileGrid() {
                   onDragStart={() => onFileDragStart(item)}
                   onClick={(e) => {
                     if (e.ctrlKey || e.metaKey) { toggleSelect(item.cid); return; }
-                    setPreviewFile(item);
+                    openFile(item);
                   }}
                   onContextMenu={(e) => openMenuForFile(e, item)}
                   onMouseEnter={() => setHoveredKey(key)}
@@ -92,8 +92,13 @@ export default function FileGrid() {
                     backgroundColor: hoveredKey === key ? theme.tileHover : theme.tile,
                     // Visible but inert until the upload mines — see FileList
                     ...(item.pending ? { opacity: 0.55, pointerEvents: "none" } : null),
+                    // Expired shares dim the same way but stay clickable: the
+                    // click is the whole point, it opens the request dialog.
+                    ...(item.is_expired ? { opacity: 0.55 } : null),
                   }}
-                  title={item.pending ? "Confirming on-chain…" : undefined}
+                  title={item.pending ? "Confirming on-chain…"
+                    : item.is_expired ? "Access expired — click to ask for more time"
+                    : undefined}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 6px 10px 14px" }}>
                     <SelectBox cid={item.cid} visible={hoveredKey === key || someSelected} />
@@ -108,7 +113,9 @@ export default function FileGrid() {
                   }}>
                     {/* No thumbnail for a pending upload: the endpoint checks
                         the contract for permission and would 403 until it mines. */}
-                    {hasThumbnailFor(item.filename) && !item.pending ? (
+                    {/* No thumbnail for an expired share either: /thumbnail
+                        checks the contract and would 403 for every one. */}
+                    {hasThumbnailFor(item.filename) && !item.pending && !item.is_expired ? (
                       <Thumbnail
                         cid={item.cid}
                         filename={item.filename}
