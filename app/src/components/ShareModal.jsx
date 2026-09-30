@@ -174,10 +174,16 @@ export default function ShareModal({
             <div style={{ padding: "14px 4px", color: t.subText, fontSize: "13px" }}>
               No one else has access yet.
             </div>
-          ) : sharedUsers.map(({ address, expires_at_block }) => (
+          ) : sharedUsers.map(({ address, expires_at_block, lapsed }) => (
             <div
               key={address}
-              style={{ display: "flex", alignItems: "center", gap: "12px", padding: "8px 4px", borderRadius: "8px" }}
+              // A lapsed recipient is dimmed rather than hidden: the owner
+              // needs to see that they had access and when it ended. Someone
+              // revoked is gone from the list entirely, and should be.
+              style={{
+                display: "flex", alignItems: "center", gap: "12px", padding: "8px 4px",
+                borderRadius: "8px", opacity: lapsed ? 0.55 : 1,
+              }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = t.hoverRow}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
             >
@@ -188,15 +194,15 @@ export default function ShareModal({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: "13px", fontFamily: "monospace" }} title={address}>{short(address)}</div>
                 {expires_at_block != null && (
-                  <div style={{ fontSize: "11px", color: t.subText }}>
-                    Expires at block {expires_at_block.toLocaleString()}
+                  <div style={{ fontSize: "11px", color: lapsed ? "#d9534f" : t.subText }}>
+                    {lapsed ? "Access expired at block" : "Expires at block"} {expires_at_block.toLocaleString()}
                   </div>
                 )}
               </div>
               <button
                 onClick={() => doRevoke(address)}
                 disabled={!!busy}
-                title="Remove access"
+                title={lapsed ? "Remove — also stops them asking for more time" : "Remove access"}
                 style={{
                   background: "none", border: "none", cursor: busy ? "not-allowed" : "pointer",
                   color: "#d9534f", padding: "6px", display: "flex",

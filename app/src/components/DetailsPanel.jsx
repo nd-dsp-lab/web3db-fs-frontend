@@ -135,12 +135,12 @@ export default function DetailsPanel({ file, account, authToken, api, onClose, t
           ) : sharedUsers.length === 0 ? (
             <div style={{ fontSize: "13px", color: theme.subText }}>Only you</div>
           ) : (
-            sharedUsers.map(({ address, expires_at_block }) => (
-              <div key={address} style={{ marginBottom: "4px" }}>
+            sharedUsers.map(({ address, expires_at_block, lapsed }) => (
+              <div key={address} style={{ marginBottom: "4px", opacity: lapsed ? 0.55 : 1 }}>
                 <div style={{ fontSize: "13px", fontFamily: "monospace" }}>{short(address)}</div>
                 {expires_at_block != null && (
-                  <div style={{ fontSize: "11px", color: theme.subText }}>
-                    Expires at block {expires_at_block.toLocaleString()}
+                  <div style={{ fontSize: "11px", color: lapsed ? "#d9534f" : theme.subText }}>
+                    {lapsed ? "Access expired at block" : "Expires at block"} {expires_at_block.toLocaleString()}
                   </div>
                 )}
               </div>
@@ -153,7 +153,7 @@ export default function DetailsPanel({ file, account, authToken, api, onClose, t
             height: "160px", borderRadius: "12px", backgroundColor: theme.tile, marginBottom: "18px",
             display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
           }}>
-            {hasThumbnailFor(file.filename) ? (
+            {hasThumbnailFor(file.filename) && !file.is_expired ? (
               <Thumbnail
                 cid={file.cid}
                 filename={file.filename}
@@ -193,7 +193,14 @@ export default function DetailsPanel({ file, account, authToken, api, onClose, t
               <div style={{ fontSize: "13px" }}>Shared with you by {short(file.owner)}</div>
               {file.expires_at_block != null && (
                 <div style={{ fontSize: "11px", color: theme.subText, marginTop: "2px" }}>
-                  Expires at block {file.expires_at_block.toLocaleString()}
+                  {file.is_expired ? "Expired" : "Expires"} at block {file.expires_at_block.toLocaleString()}
+                </div>
+              )}
+              {file.is_expired && (
+                <div style={{ fontSize: "11px", color: "#d9534f", marginTop: "4px" }}>
+                  {file.request_status === "pending" ? "Extension requested — waiting on the owner"
+                    : file.request_status === "denied" ? "Extension request declined"
+                    : "Access expired — open the file to ask for more time"}
                 </div>
               )}
             </div>
@@ -202,12 +209,12 @@ export default function DetailsPanel({ file, account, authToken, api, onClose, t
           ) : sharedUsers.length === 0 ? (
             <div style={{ fontSize: "13px", color: theme.subText }}>Only you</div>
           ) : (
-            sharedUsers.map(({ address, expires_at_block }) => (
-              <div key={address} style={{ marginBottom: "4px" }}>
+            sharedUsers.map(({ address, expires_at_block, lapsed }) => (
+              <div key={address} style={{ marginBottom: "4px", opacity: lapsed ? 0.55 : 1 }}>
                 <div style={{ fontSize: "13px", fontFamily: "monospace" }}>{short(address)}</div>
                 {expires_at_block != null && (
-                  <div style={{ fontSize: "11px", color: theme.subText }}>
-                    Expires at block {expires_at_block.toLocaleString()}
+                  <div style={{ fontSize: "11px", color: lapsed ? "#d9534f" : theme.subText }}>
+                    {lapsed ? "Access expired at block" : "Expires at block"} {expires_at_block.toLocaleString()}
                   </div>
                 )}
               </div>

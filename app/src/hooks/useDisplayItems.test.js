@@ -133,3 +133,46 @@ describe("Trash view", () => {
     expect(folder).toMatchObject({ name: "docs", trash: true });
   });
 });
+
+describe("shared-by-me", () => {
+  const owned = (over = {}) => ({
+    cid: "c1", filename: "a.txt", folder_path: "/", is_owner: true, ...over,
+  });
+
+  const run = (files) => renderHook(() => useDisplayItems({
+    files, fileTree: null, view: "shared-by-me", currentPath: "/",
+    searchQuery: "", searchType: null, searchScope: "all",
+    emptyFolders: new Set(), starred: new Set(), starredFolders: new Set(),
+  })).result.current;
+
+  test("lists owned files that someone else can see", () => {
+    const items = run([
+      owned({ cid: "shared", shared_with_detail: [{ address: "0xA", lapsed: false }] }),
+      owned({ cid: "private", shared_with_detail: [] }),
+    ]);
+    expect(items.map((i) => i.cid)).toEqual(["shared"]);
+  });
+
+  test("keeps a file whose only recipient has lapsed", () => {
+    // That is exactly when the owner is most likely to be looking for it --
+    // shared_with would be empty here, which is why the view reads detail.
+    const items = run([
+      owned({ cid: "lapsed", shared_with: [], shared_with_detail: [{ address: "0xA", lapsed: true }] }),
+    ]);
+    expect(items.map((i) => i.cid)).toEqual(["lapsed"]);
+  });
+
+  test("never lists files owned by someone else", () => {
+    const items = run([
+      owned({ cid: "theirs", is_owner: false, shared_with_detail: [{ address: "0xA", lapsed: false }] }),
+    ]);
+    expect(items).toEqual([]);
+  });
+
+  test("excludes trashed files", () => {
+    const items = run([
+      owned({ cid: "binned", folder_path: "/.trash", shared_with_detail: [{ address: "0xA", lapsed: false }] }),
+    ]);
+    expect(items).toEqual([]);
+  });
+});

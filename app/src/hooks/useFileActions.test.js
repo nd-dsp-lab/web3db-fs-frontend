@@ -993,3 +993,64 @@ describe("a failed batch move leaves local folder state untouched", () => {
     expect(posted(calls, "remapStarred")).toEqual([{ from: "/docs", to: "/papers" }]);
   });
 });
+
+// --- request-flow notification emails ---
+// Fired after the transaction mines, and never awaited: the action has
+// already succeeded on-chain, so a failed email must not surface as failure.
+// The bodies carry no email address — the backend works out who to mail from
+// the chain, so all the frontend can name is the cid and the decision.
+
+describe("request notifications", () => {
+  test("asking for more time emails the owner", async () => {
+    const { actions, calls } = setup();
+    await actions.handleRequestExtension("cid1", 500);
+    await flush();
+
+    const [prepared] = posted(calls, "/request-extension");
+    expect(prepared.cid).toBe("cid1");
+    expect(prepared.duration_blocks).toBe(500);
+
+    const [notify] = posted(calls, "/notify-request");
+    expect(notify.cid).toBe("cid1");
+    // no email address anywhere in the body — the backend resolves the owner
+    expect(JSON.stringify(notify)).not.toContain("@");
+  });
+
+  test("approving emails the requester with the decision", async () => {
+    const { actions, calls } = setup();
+    await actions.handleApproveRequest("cid1", "0xBOB", 800);
+    await flush();
+
+    const [notify] = posted(calls, "/notify-approve");
+    expect(notify.cid).toBe("cid1");
+    expect(notify.requester).toBe("0xBOB");
+  });
+
+  test("declining emails the requester too", async () => {
+    const { actions, calls } = setup();
+    await actions.handleDenyRequest("cid1", "0xBOB");
+    await flush();
+
+    expect(posted(calls, "/notify-deny")).toHaveLength(1);
+    expect(posted(calls, "/notify-approve")).toEqual([]);
+  });
+
+  test("a failed notification does not turn a successful approval into an error", async () => {
+    const { actions, calls } = setup({
+      responses: { "/notify-approve": { error: "SES down" } },
+    });
+    await actions.handleApproveRequest("cid1", "0xBOB", 800);
+    await flush();
+
+    expect(types(calls)).not.toContain("error");
+    expect(said(calls, "Access restored")).toBe(true);
+  });
+
+  test("a rejected request signature sends no email", async () => {
+    const { actions, calls } = setup({ rejectSignature: true });
+    await actions.handleRequestExtension("cid1", 500);
+    await flush();
+
+    expect(posted(calls, "/notify-request")).toEqual([]);
+  });
+});

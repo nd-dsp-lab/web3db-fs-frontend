@@ -11,7 +11,7 @@ export default function FileList() {
     sortBy, sortDir, toggleSort,
     selectedCount, setSelected, folderKeyOf,
     hoveredKey, setHoveredKey, someSelected,
-    toggleSelect, navigateInto, setPreviewFile,
+    toggleSelect, navigateInto, openFile,
     openMenuForFile, openMenuForFolder,
     canDragFolder, onFileDragStart, onFolderDragStart, onFolderDrop,
     folderSharedCount, folderPathOf, starred, starredFolders,
@@ -89,6 +89,9 @@ export default function FileList() {
                 // Visible but inert until the upload mines: preview, download
                 // and sharing all check the contract, which doesn't know it yet.
                 ...(item.pending ? { opacity: 0.55, pointerEvents: "none" } : null),
+                // Expired shares dim the same way but stay clickable — the
+                // click opens the request dialog.
+                ...(item.is_expired ? { opacity: 0.55 } : null),
               }}
             >
               <td style={{ padding: "10px 0 10px 8px" }}>
@@ -101,7 +104,7 @@ export default function FileList() {
                 style={{ padding: "10px 8px", display: "flex", alignItems: "center", gap: "14px", fontSize: "14px" }}
                 onClick={(e) => {
                   if (e.ctrlKey || e.metaKey) { toggleSelect(item.type === "file" ? item.cid : folderKeyOf(item)); return; }
-                  item.type === "folder" ? navigateInto(item) : setPreviewFile(item);
+                  item.type === "folder" ? navigateInto(item) : openFile(item);
                 }}
               >
                 {item.type === "folder" && folderShCount !== 0 ? (
@@ -118,6 +121,10 @@ export default function FileList() {
               </td>
               <td style={{ fontSize: "13px", color: theme.subText }}>
                 {item.pending ? "Confirming on-chain…"
+                  : item.is_expired
+                  ? (item.request_status === "pending" ? "Access expired — requested"
+                    : item.request_status === "denied" ? "Access expired — declined"
+                    : "Access expired")
                   : item.type === "file"
                   ? (item.is_owner
                     ? (sharedCount > 0 ? `Shared with ${sharedCount}` : "Only you")

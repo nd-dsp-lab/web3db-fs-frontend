@@ -1,7 +1,7 @@
 // Grant and revoke access, single file or batch, plus the recipient plumbing
 // that turns whatever the user typed into an address to grant.
 export function useSharingActions({
-  account, api, toast, user, confirm, retrieveFiles, tx,
+  account, api, toast, user, authToken, confirm, retrieveFiles, refreshRequests, tx,
 }) {
   const { prepareAndSign, reportTxError } = tx;
 
@@ -77,6 +77,82 @@ export function useSharingActions({
     }
   };
 
+  // Request-flow emails. Best-effort and never awaited, exactly like
+  // notifyShare: the transaction has already mined, and the backend works out
+  // who to mail from the chain — nothing here names a recipient.
+  const notifyRequest = (cid) =>
+    api.post("/notify-request", { cid }, { "x-auth-token": authToken })
+      .catch((e) => console.warn("Request notification failed:", e));
+
+  const notifyDecision = (endpoint, cid, requester) =>
+    api.post(endpoint, { cid, requester }, { "x-auth-token": authToken })
+      .catch((e) => console.warn("Decision notification failed:", e));
+
+  // Ask the owner of an expired share for more time. The contract gates who
+  // may ask (you held a timed grant and it lapsed), so a bad ask reverts
+  // rather than being caught here.
+  const handleRequestExtension = async (cid, durationBlocks) => {
+    if (!account) return;
+    let tId;
+    try {
+      tId = toast.loading("Sending request…");
+      await prepareAndSign("/request-extension", { cid, duration_blocks: durationBlocks }, tId);
+      toast.update(tId, "Request sent — the owner will see it", "success");
+      notifyRequest(cid);
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Request", err, tId);
+    }
+  };
+
+  const handleCancelRequest = async (cid) => {
+    if (!account) return;
+    let tId;
+    try {
+      tId = toast.loading("Withdrawing request…");
+      await prepareAndSign("/cancel-request", { cid }, tId);
+      toast.update(tId, "Request withdrawn", "success");
+      retrieveFiles();
+    } catch (err) {
+      reportTxError("Withdraw", err, tId);
+    }
+  };
+
+  // Approving re-grants through the contract's approveRequest, which records
+  // the decision and calls the same _grant an ordinary share uses -- so the
+  // resulting access is indistinguishable from a normal timed share, and the
+  // audit trail is the only difference. durationBlocks is the owner's, not
+  // the requester's.
+  const handleApproveRequest = async (cid, requester, durationBlocks) => {
+    if (!account) return;
+    let tId;
+    try {
+      tId = toast.loading("Approving request…");
+      await prepareAndSign("/approve-request",
+        { cid, requester, duration_blocks: durationBlocks }, tId);
+      toast.update(tId, `Access restored for ${requester.slice(0, 6)}...${requester.slice(-4)}`, "success");
+      notifyDecision("/notify-approve", cid, requester);
+      retrieveFiles();
+      refreshRequests?.();
+    } catch (err) {
+      reportTxError("Approve", err, tId);
+    }
+  };
+
+  const handleDenyRequest = async (cid, requester) => {
+    if (!account) return;
+    let tId;
+    try {
+      tId = toast.loading("Declining request…");
+      await prepareAndSign("/deny-request", { cid, requester }, tId);
+      toast.update(tId, "Request declined", "success");
+      notifyDecision("/notify-deny", cid, requester);
+      refreshRequests?.();
+    } catch (err) {
+      reportTxError("Decline", err, tId);
+    }
+  };
+
   // Share many cids with one recipient — one grantFiles tx. Used by folder
   // share and multi-select share; notifyName labels the email notification
   // (e.g. 'the folder "docs"' or '3 items').
@@ -114,5 +190,9 @@ export function useSharingActions({
     }
   };
 
-  return { handleShare, handleUnshare, handleShareCids, handleUnshareCids };
+  return {
+    handleShare, handleUnshare, handleShareCids, handleUnshareCids,
+    handleRequestExtension, handleCancelRequest,
+    handleApproveRequest, handleDenyRequest,
+  };
 }

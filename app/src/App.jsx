@@ -12,6 +12,7 @@ import { useToasts } from "./hooks/useToasts";
 import { useEmptyFolders } from "./hooks/useEmptyFolders";
 import { useStarred } from "./hooks/useStarred";
 import { useDisplayItems } from "./hooks/useDisplayItems";
+import { useShareRequests } from "./hooks/useShareRequests";
 import { usePendingUploads, mergePendingUploads } from "./hooks/usePendingUploads";
 import { useFileActions } from "./hooks/useFileActions";
 import { useConfirmDialog } from "./hooks/useConfirm";
@@ -226,11 +227,16 @@ function App() {
   // Promise-based confirm dialog (themed replacement for window.confirm)
   const { confirm, confirmDialog, onConfirm, onCancel } = useConfirmDialog();
 
+  // --- INCOMING ACCESS REQUESTS (owner side of the Shared with others view) ---
+  const { requests, loadingRequests, refreshRequests } = useShareRequests({
+    api, account, authToken, view,
+  });
+
   // --- FILE ACTIONS (share, move, rename, trash, restore, delete, upload) ---
   const {
-    handleShare, handleUnshare, handleShareCids, handleUnshareCids, handleMove, handleTrash, handleRestore, handleDelete, handleBulkTrash, handleBulkMove, handleBulkRestore, handleBulkDelete, handleRestoreFolder, handleDeleteFolderForever, handleTrashFolder, handleRenameFolder, handleMoveFolder, handleCreateFolder, handleDeleteFolder, handleUpload, handleDropUpload,
+    handleShare, handleUnshare, handleShareCids, handleUnshareCids, handleRequestExtension, handleCancelRequest, handleApproveRequest, handleDenyRequest, handleMove, handleTrash, handleRestore, handleDelete, handleBulkTrash, handleBulkMove, handleBulkRestore, handleBulkDelete, handleRestoreFolder, handleDeleteFolderForever, handleTrashFolder, handleRenameFolder, handleMoveFolder, handleCreateFolder, handleDeleteFolder, handleUpload, handleDropUpload,
   } = useFileActions({
-    account, api, toast, pushToast, user, getProvider, retrieveFiles, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
+    account, api, toast, pushToast, user, authToken, getProvider, retrieveFiles, refreshRequests, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
     addPendingUploads, dropPendingUploads,
   });
 
@@ -320,6 +326,9 @@ function App() {
     handleMove, handleDelete, handleTrash, handleRestore, handleDeleteFolder,
     handleRestoreFolder, handleDeleteFolderForever,
     handleShare, handleUnshare, handleShareCids, handleUnshareCids,
+    handleRequestExtension, handleCancelRequest,
+    handleApproveRequest, handleDenyRequest,
+    requests, loadingRequests, refreshRequests,
     handleBulkMove, handleBulkTrash, handleBulkRestore, handleBulkDelete,
     folderCidsOf, folderStatsOf,
     view, setView,
