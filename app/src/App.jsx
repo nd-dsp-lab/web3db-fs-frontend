@@ -25,7 +25,17 @@ import { WorkspaceContext } from "./contexts/WorkspaceContext";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 if (!API_BASE_URL) console.error("VITE_API_BASE_URL is not set — API requests will fail.");
 
-function App() {
+function PrivyApp() {
+  const session = usePrivy();
+  const { wallets } = useWallets();
+  return <WorkspaceApp session={{ ...session, wallets, mode: 'privy' }} />;
+}
+
+function App({ walletSession } = {}) {
+  return walletSession ? <WorkspaceApp session={walletSession} /> : <PrivyApp />;
+}
+
+function WorkspaceApp({ session }) {
   // API_BASE_URL is a module constant, so this never needs to rebuild
   const api = useMemo(() => makeApi(API_BASE_URL), []);
 
@@ -59,8 +69,7 @@ function App() {
   };
 
   // --- WALLET FUNCTIONALITY (Privy: email / Google / external wallet) ---
-  const { ready, authenticated, login, logout, user } = usePrivy();
-  const { wallets } = useWallets();
+  const { ready, authenticated, login, logout, user, wallets, mode } = session;
   // Pick the wallet that matches the login method: social logins (email /
   // Google) use the Privy embedded wallet; wallet logins use the external one.
   // useWallets() can list a previously-connected MetaMask first, so never
@@ -71,7 +80,10 @@ function App() {
   const wallet = socialLogin ? (embeddedWallet || externalWallet) : (externalWallet || embeddedWallet);
   const account = ready && authenticated && wallet ? wallet.address : null;
 
-  const connectWallet = () => login();
+  const connectWallet = async () => {
+    try { await login(); }
+    catch (error) { toast.error(error?.message || 'Wallet connection failed'); }
+  };
 
   const { emptyFolders, setEmptyFolders, persistEmptyFolders } = useEmptyFolders(account);
   const { starred, starredFolders, toggleStar, toggleStarFolder, toggleStarMany, remapStarredFolders } = useStarred(account);
@@ -182,7 +194,7 @@ function App() {
         const res = await api.post("/fund-wallet", { address: account });
         const data = await res.json();
         if (data.funded) {
-          console.log(`Wallet funded with ${data.amount_eth} SepETH:`, data.tx_hash);
+          console.log(`Wallet funded with ${data.amount_eth} ETH:`, data.tx_hash);
         } else {
           console.log("Fund-wallet skipped:", data.reason || data.error);
         }
@@ -319,7 +331,7 @@ function App() {
   // callbacks) are rebuilt on every App render anyway, so a useMemo would
   // need every one of them as a dependency and still produce a new object.
   const workspace = {
-    account, authToken, connectWallet, disconnectWallet, user,
+    account, authToken, connectWallet, disconnectWallet, user, walletMode: mode,
     api, fileTree, displayItems, currentPath, setCurrentPath,
     uploadFile: handleUpload, handleDropUpload, setUploadMode,
     handleCreateFolder, handleRenameFolder, handleMoveFolder, handleTrashFolder,

@@ -1,4 +1,5 @@
-import { ensureSepolia, normalizeTxFields } from "../utils/helpers";
+import { appChain } from "./chain";
+import { ensureConfiguredChain, normalizeTxFields } from "../utils/helpers";
 
 // Thrown when the backend declines to prepare a transaction. The response body
 // carries a reason worth logging but nothing worth showing the user verbatim,
@@ -15,8 +16,11 @@ export function makeTx({ account, api, toast, pushToast, getProvider }) {
   // Signing is the only step the user has to be present for, so it is split
   // out: uploads sign and return, then verify in the background.
   const signTransaction = async (transaction, tId) => {
+    if (transaction.chainId != null && BigInt(transaction.chainId) !== BigInt(appChain.id)) {
+      throw new Error("The backend returned a transaction for a different network.");
+    }
     const provider = await getProvider();
-    await ensureSepolia(provider);
+    await ensureConfiguredChain(provider);
     if (tId) toast.update(tId, "Waiting for signature…", "loading");
     return provider.request({
       method: "eth_sendTransaction",

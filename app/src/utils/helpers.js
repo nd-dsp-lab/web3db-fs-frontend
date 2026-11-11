@@ -1,3 +1,5 @@
+import { appChain, chainIdHex } from "../lib/chain";
+
 // Helper function to merge empty folders into the tree structure
 export function mergeEmptyFoldersIntoTree(tree, emptyFoldersSet) {
     if (!emptyFoldersSet || emptyFoldersSet.size === 0) {
@@ -113,28 +115,38 @@ export function toHexifNumber(input) {
     return "0x" + n.toString(16);
 }
 
-// Make sure we are on the Sepolia testnet. Throws if we are not: the caller
-// signs a transaction straight after, and on the wrong chain that transaction
-// goes to the Sepolia contract address on mainnet — real ETH spent on a no-op.
-export async function ensureSepolia(provider = window.ethereum) {
-    const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
-
-    const currentChainId = await provider.request({ method: "eth_chainId" });
-    if (currentChainId === SEPOLIA_CHAIN_ID) return;
-
+// Never sign a prepared transaction until the wallet confirms the configured chain.
+export async function ensureConfiguredChain(provider = window.ethereum) {
+    if (!provider) throw new Error("No wallet connected");
+    const matches = (id) => {
+      try { return BigInt(id) === BigInt(appChain.id); } catch { return false; }
+    };
+    if (matches(await provider.request({ method: "eth_chainId" }))) return;
     try {
       await provider.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: SEPOLIA_CHAIN_ID }],
+        params: [{ chainId: chainIdHex }],
       });
-    } catch (switchError) {
-      // Sepolia isn't added to the wallet, or the user declined the switch
-      throw new Error("Please switch your wallet to the Sepolia test network", { cause: switchError });
+    } catch (error) {
+      if (error.code !== 4902) {
+        throw new Error(`Please switch your wallet to ${appChain.name}`, { cause: error });
+      }
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: chainIdHex,
+          chainName: appChain.name,
+          nativeCurrency: appChain.nativeCurrency,
+          rpcUrls: appChain.rpcUrls.default.http,
+        }],
+      });
+      await provider.request({
+        method: "wallet_switchEthereumChain", params: [{ chainId: chainIdHex }],
+      });
     }
-
-    // A wallet may resolve the switch request without actually switching
-    const chainId = await provider.request({ method: "eth_chainId" });
-    if (chainId !== SEPOLIA_CHAIN_ID) throw new Error("Please switch your wallet to the Sepolia test network");
+    if (!matches(await provider.request({ method: "eth_chainId" }))) {
+      throw new Error(`Please switch your wallet to ${appChain.name}`);
+    }
 }
 
 // Ensure all transaction fields are properly formatted

@@ -1,3 +1,4 @@
+import { chainIdHex } from "../lib/chain";
 /* eslint-disable react-hooks/rules-of-hooks --
    useFileActions contains no React hooks (no useState/useEffect/useCallback);
    it is a plain factory that happens to follow the naming convention, so the
@@ -9,7 +10,7 @@ import { TRASH_PREFIX } from "../lib/constants";
 // hooks internally, so it can be called as a plain function — no rendering,
 // no DOM, no wallet.
 
-const SEPOLIA = "0xaa36a7";
+const TARGET_CHAIN = chainIdHex;
 const ACCOUNT = "0x1A28b19f6d2ea1A05F9eFFbcCcbF7E9571877981";
 const REJECTED = Object.assign(new Error("User rejected"), { code: 4001 });
 
@@ -55,7 +56,7 @@ function setup({
   const provider = {
     request: async ({ method }) => {
       calls.provider.push(method);
-      if (method === "eth_chainId") return SEPOLIA;
+      if (method === "eth_chainId") return TARGET_CHAIN;
       if (method === "eth_sendTransaction") {
         if (rejectSignature) throw REJECTED;
         return "0xtxhash";

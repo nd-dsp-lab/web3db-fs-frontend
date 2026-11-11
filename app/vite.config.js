@@ -13,7 +13,7 @@ export default defineConfig({
   optimizeDeps: {
     esbuildOptions: { loader: { ".js": "jsx" } },
   },
-  server: { port: 3000 },
+  server: { port: 3000, allowedHosts: [".ngrok-free.dev"] },
   build: { outDir: "dist" },
   test: {
     globals: true,

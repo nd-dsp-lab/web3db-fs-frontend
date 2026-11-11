@@ -31,7 +31,7 @@ const FEATURES = [
 ];
 
 export default function Landing() {
-  const { darkMode, toggleTheme, connectWallet, api } = useWorkspace();
+  const { darkMode, toggleTheme, connectWallet, api, walletMode } = useWorkspace();
   const theme = makeTheme(darkMode);
 
   const signIn = (
@@ -43,7 +43,7 @@ export default function Landing() {
         fontWeight: 500, fontSize: "16px",
       }}
     >
-      Sign in
+      {walletMode === "metamask" ? "Connect MetaMask" : "Sign in"}
     </button>
   );
 
@@ -85,7 +85,7 @@ export default function Landing() {
               fontWeight: 500, fontSize: "14px",
             }}
           >
-            Sign in
+            {walletMode === "metamask" ? "Connect MetaMask" : "Sign in"}
           </button>
         </div>
       </header>
@@ -113,7 +113,7 @@ export default function Landing() {
         </p>
         {signIn}
         <p style={{ fontSize: "13px", color: theme.subText, margin: "16px 0 0" }}>
-          Sign in with email, Google, or your own wallet.
+          {walletMode === "metamask" ? "Connect MetaMask and approve the sign-in message." : "Sign in with email, Google, or your own wallet."}
         </p>
 
         <div className="landing-preview" style={{ marginTop: "56px", width: "100%" }}>
