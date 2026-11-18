@@ -12,7 +12,13 @@ root.render(
     {walletMode === 'metamask' ? <MetaMaskApp /> : <PrivyProvider
       appId={import.meta.env.VITE_PRIVY_APP_ID}
       config={{
-        loginMethods: ['email', 'google', 'wallet'],
+        // Email and Google only. Both create a Privy embedded wallet, which
+        // can sign without reaching a chain -- the thing this path depends on.
+        // An external wallet connected here could not: MetaMask has no
+        // eth_signTransaction and can only sign by broadcasting. MetaMask has
+        // its own mode (VITE_WALLET_MODE=metamask), which requires a published
+        // RPC; it is not something to re-add to this list.
+        loginMethods: ['email', 'google'],
         embeddedWallets: {
           ethereum: { createOnLogin: 'users-without-wallets' },
         },

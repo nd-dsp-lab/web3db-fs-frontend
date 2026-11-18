@@ -6,6 +6,12 @@ import { chainIdHex } from "../lib/chain";
 import { useFileActions } from "./useFileActions";
 import { TRASH_PREFIX } from "../lib/constants";
 
+// Privy signs in an iframe and never broadcasts; toViemAccount is all lib/tx
+// needs from it, so the fake wallet below carries its own signer.
+vi.mock("@privy-io/react-auth", () => ({
+  toViemAccount: async ({ wallet }) => wallet.signer,
+}));
+
 // useFileActions takes every dependency as an argument and uses no React
 // hooks internally, so it can be called as a plain function — no rendering,
 // no DOM, no wallet.
@@ -31,6 +37,8 @@ function setup({
   uploadResponse = null,
   uploadMode = "file",
   user = null,
+  mode = "privy",
+  authToken = "token",
   currentPath = "/",
   initialEmptyFolders = [],
 } = {}) {
@@ -40,7 +48,10 @@ function setup({
     url: (p) => `http://api${p}`,
     post: async (path, body) => {
       calls.api.push({ path, body });
-      const spec = responses[path] ?? { transaction: { to: "0xcontract" }, success: true, count: 1 };
+      const fallback = path === "/broadcast"
+        ? { tx_hash: "0xtxhash" }
+        : { transaction: { to: "0xcontract" }, success: true, count: 1 };
+      const spec = responses[path] ?? fallback;
       return { ok: spec.ok !== false, json: async () => spec };
     },
   };
@@ -65,6 +76,17 @@ function setup({
     },
   };
 
+  // Signs locally and returns the raw transaction — no chain, no broadcast.
+  const wallet = {
+    signer: {
+      signTransaction: async () => {
+        calls.provider.push("signTransaction");
+        if (rejectSignature) throw REJECTED;
+        return "0xsignedtx";
+      },
+    },
+  };
+
   if (uploadResponse) installFakeXHR(uploadResponse, calls);
 
   let emptyFolders = new Set(initialEmptyFolders);
@@ -75,6 +97,9 @@ function setup({
     pushToast: (msg, type) => calls.toasts.push([type, msg]),
     user,
     getProvider: async () => provider,
+    wallet,
+    authToken,
+    mode,
     retrieveFiles: () => { calls.retrieveFiles += 1; },
     files,
     emptyFolders,
@@ -136,7 +161,7 @@ describe("signAndVerifyTransaction", () => {
     const { actions, calls } = setup();
     await actions.handleMove("cid1", "/b/a.pdf");
 
-    expect(calls.provider).toEqual(["eth_chainId", "eth_sendTransaction"]);
+    expect(calls.provider).toEqual(["signTransaction"]);
     expect(posted(calls, "/verify-upload")).toEqual([{ tx_hash: "0xtxhash" }]);
     expect(calls.retrieveFiles).toBe(1);
   });
@@ -447,7 +472,7 @@ describe("upload", () => {
 
     // Signed and reported done without waiting on the receipt — the file shows
     // as a pending row instead.
-    expect(calls.provider).toEqual(["eth_chainId", "eth_sendTransaction"]);
+    expect(calls.provider).toEqual(["signTransaction"]);
     expect(calls.pending.map((r) => r.cid)).toEqual(["c1"]);
     expect(types(calls)).toContain("success");
     expect(calls.retrieveFiles).toBe(0);
@@ -491,7 +516,7 @@ describe("upload", () => {
 
     // one upload signature + one per recipient, all signed back to back with
     // no receipt wait in between (the grants are nonce-offset behind the upload)
-    expect(calls.provider.filter((m) => m === "eth_sendTransaction")).toHaveLength(3);
+    expect(calls.provider.filter((m) => m === "signTransaction")).toHaveLength(3);
     expect(said(calls, "shared with 2 people")).toBe(true);
     // Signing is finished while the receipts are not — confirmation runs on
     // after the call returns.
@@ -843,7 +868,7 @@ describe("folder create, delete and trash", () => {
     });
     await actions.handleDeleteFolder("/docs");
 
-    expect(calls.provider).toContain("eth_sendTransaction");
+    expect(calls.provider).toContain("signTransaction");
     expect(said(calls, "Folder deleted")).toBe(true);
     expect(calls.retrieveFiles).toBe(1);
   });
@@ -1053,5 +1078,49 @@ describe("request notifications", () => {
     await flush();
 
     expect(posted(calls, "/notify-request")).toEqual([]);
+  });
+});
+
+// --- the two signing paths ---
+// Privy signs and the backend relays, because the production chain is not
+// reachable from a browser. MetaMask cannot sign without sending, so it keeps
+// the direct path and the chain check that goes with it.
+
+describe("privy mode", () => {
+  test("signs locally and relays through the backend", async () => {
+    const { actions, calls } = setup({ files: [file()] });
+    await actions.handleDelete(file());
+
+    expect(calls.provider).toEqual(["signTransaction"]);
+    const relayed = calls.api.find((c) => c.path === "/broadcast");
+    expect(relayed.body.raw_transaction).toBe("0xsignedtx");
+  });
+
+  test("does not ask for a signature it cannot relay", async () => {
+    // The token arrives from an effect after login. Until it does, /broadcast
+    // would 401 — so fail before the wallet prompt, not after.
+    const { actions, calls } = setup({ files: [file()], authToken: null });
+    await actions.handleDelete(file());
+
+    expect(calls.provider).toEqual([]);
+    expect(calls.api.some((c) => c.path === "/broadcast")).toBe(false);
+    expect(calls.toasts.some(([, msg]) => /signing you in/i.test(msg))).toBe(true);
+  });
+});
+
+describe("metamask mode", () => {
+  test("checks the chain, then lets the wallet broadcast", async () => {
+    const { actions, calls } = setup({ files: [file()], mode: "metamask" });
+    await actions.handleDelete(file());
+
+    expect(calls.provider).toEqual(["eth_chainId", "eth_sendTransaction"]);
+    expect(calls.api.some((c) => c.path === "/broadcast")).toBe(false);
+  });
+
+  test("needs no login token, since nothing is relayed", async () => {
+    const { actions, calls } = setup({ files: [file()], mode: "metamask", authToken: null });
+    await actions.handleDelete(file());
+
+    expect(calls.provider).toContain("eth_sendTransaction");
   });
 });

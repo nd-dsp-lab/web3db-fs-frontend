@@ -1,3 +1,5 @@
+import { toViemAccount } from "@privy-io/react-auth";
+
 import { appChain } from "./chain";
 import { ensureConfiguredChain, normalizeTxFields } from "../utils/helpers";
 
@@ -10,22 +12,54 @@ export class PrepareError extends Error {}
 // hook: there is no state here, and making it one would imply otherwise.
 // `deps` is the slice of App the plumbing needs — account, api, toast, pushToast
 // and getProvider.
-export function makeTx({ account, api, toast, pushToast, getProvider }) {
+export function makeTx({ account, api, toast, pushToast, getProvider, wallet, authToken, mode }) {
   // Backend endpoints only *prepare* transactions; the user must sign and
   // broadcast via MetaMask, then the backend verifies the receipt on-chain.
   // Signing is the only step the user has to be present for, so it is split
   // out: uploads sign and return, then verify in the background.
+  //
+  // Two paths, because the two wallets can do different things.
+  //
+  // MetaMask broadcasts for itself: it has no eth_signTransaction, so signing
+  // and sending are one call, and it needs an RPC it can reach. That is the
+  // metamask mode, and it only works where the node is published.
+  //
+  // Privy embedded wallets can sign without sending. That matters because the
+  // production chain listens on the enclave host's loopback and the campus
+  // perimeter refuses every inbound connection, so a browser has no RPC to
+  // broadcast to. The wallet signs and /broadcast relays from inside. Trust is
+  // unchanged: the signature covers every field, so the relay can only decline
+  // to send a transaction, never alter one.
   const signTransaction = async (transaction, tId) => {
     if (transaction.chainId != null && BigInt(transaction.chainId) !== BigInt(appChain.id)) {
       throw new Error("The backend returned a transaction for a different network.");
     }
-    const provider = await getProvider();
-    await ensureConfiguredChain(provider);
+
+    if (mode === "metamask") {
+      const provider = await getProvider();
+      await ensureConfiguredChain(provider);
+      if (tId) toast.update(tId, "Waiting for signature…", "loading");
+      return provider.request({
+        method: "eth_sendTransaction",
+        params: [normalizeTxFields(transaction)],
+      });
+    }
+
+    if (!wallet) throw new Error("No wallet connected");
+    // Check before asking for a signature, not after. /broadcast needs the
+    // login token, and a token that is not there yet would turn a signature
+    // the user has already approved into a 401.
+    if (!authToken) throw new Error("Still signing you in — try again in a moment");
     if (tId) toast.update(tId, "Waiting for signature…", "loading");
-    return provider.request({
-      method: "eth_sendTransaction",
-      params: [normalizeTxFields(transaction)],
-    });
+    const signer = await toViemAccount({ wallet });
+    const raw = await signer.signTransaction(normalizeTxFields(transaction));
+
+    if (tId) toast.update(tId, "Broadcasting…", "loading");
+    const res = await api.post("/broadcast", { raw_transaction: raw },
+                               { "x-auth-token": authToken });
+    const data = await res.json();
+    if (!data.tx_hash) throw new Error(data.error || "Broadcast failed");
+    return data.tx_hash;
   };
 
   // Blocks until the transaction mines — the backend waits on the receipt, so
