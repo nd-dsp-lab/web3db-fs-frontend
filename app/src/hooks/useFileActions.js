@@ -13,10 +13,10 @@ import { useUploadActions } from "./useUploadActions";
 // every owned file beneath it, so `runBatchMove` and the bulk restore/delete
 // pass across.
 export function useFileActions({
-  account, api, toast, pushToast, user, authToken, getProvider, retrieveFiles, refreshRequests, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
+  account, api, toast, pushToast, user, authToken, getProvider, wallet, mode, retrieveFiles, refreshRequests, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
   addPendingUploads, dropPendingUploads,
 }) {
-  const tx = makeTx({ account, api, toast, pushToast, getProvider });
+  const tx = makeTx({ account, api, toast, pushToast, getProvider, wallet, authToken, mode });
 
   const sharing = useSharingActions({ account, api, toast, user, authToken, confirm, retrieveFiles, refreshRequests, tx });
 

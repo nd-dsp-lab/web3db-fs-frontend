@@ -158,5 +158,8 @@ export function normalizeTxFields(txn) {
         if (fields[key] !== undefined) fields[key] = toHexifNumber(fields[key]);
     }
     fields.value = toHexifNumber(fields.value) || '0x0';
+    // Privy's signing iframe names this gasLimit; MetaMask, viem and the
+    // backend name it gas. Send both rather than depend on which one reads it.
+    if (fields.gas !== undefined && fields.gasLimit === undefined) fields.gasLimit = fields.gas;
     return fields
 }

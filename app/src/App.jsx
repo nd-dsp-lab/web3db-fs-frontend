@@ -248,7 +248,7 @@ function WorkspaceApp({ session }) {
   const {
     handleShare, handleUnshare, handleShareCids, handleUnshareCids, handleRequestExtension, handleCancelRequest, handleApproveRequest, handleDenyRequest, handleMove, handleTrash, handleRestore, handleDelete, handleBulkTrash, handleBulkMove, handleBulkRestore, handleBulkDelete, handleRestoreFolder, handleDeleteFolderForever, handleTrashFolder, handleRenameFolder, handleMoveFolder, handleCreateFolder, handleDeleteFolder, handleUpload, handleDropUpload,
   } = useFileActions({
-    account, api, toast, pushToast, user, authToken, getProvider, retrieveFiles, refreshRequests, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
+    account, api, toast, pushToast, user, authToken, getProvider, wallet, mode, retrieveFiles, refreshRequests, files, emptyFolders, setEmptyFolders, persistEmptyFolders, remapStarredFolders, currentPath, uploadMode, setView, setCurrentPath, setSearchQuery, confirm,
     addPendingUploads, dropPendingUploads,
   });
 
